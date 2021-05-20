@@ -1,0 +1,384 @@
+---
+title: "Intermittent spring river flows in Eastern Australia"
+author: "Ben Renard"
+date: "30/09/2019"
+output: 
+  html_document: 
+    number_sections: yes
+    toc: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,results='hide')
+```
+
+# Preliminaries
+
+Load RSTooDs:
+
+```{r}
+library(RSTooDs)
+```
+
+# Single-site analysis
+
+## Selecting data
+```{r}
+oneSite <- data.frame(year=springFlow$year,flow=springFlow$station2)
+plot(oneSite,pch=19,xlab='Year',ylab='Spring mean flow [m3/s]')
+dat <- dataset(Y=oneSite$flow)
+```
+
+## Estimating a lognormal distribution 
+
+Parameters:
+
+```{r}
+meanlog <- parameter(name='meanlog',init=0) 
+sdlog <- parameter(name='sdlog',init=0.1) 
+```
+
+set Model and run!
+
+```{r,results='markup'}
+mod <- model(dataset=dat,parentDist='LogNormal',par=list(meanlog,sdlog),
+             formula=c('meanlog = meanlog','sdlog = sdlog'))
+STooDs(model=mod)
+```
+
+## Handling zeros, approach 1: modeling the occurence process
+
+Create a dataset with two variables: a binary variable denoting the occurrence of a zero, and the flow for non-zero values.
+
+```{r}
+isZero=springFlow$station2==0 # zero-flow mask
+v1 <- ifelse(isZero,1,0) # occurrence process
+v2 <- springFlow$station2[!isZero] # non-zero flow values
+dat <- dataset( # merge the two variables in a single dataset
+  Y=c(v1,v2),
+  var=c(rep('isZero',NROW(v1)),rep('nzFlow',NROW(v2)))
+  )
+```
+
+### IID model
+
+Parameters: need to add the probability of zero!
+```{r}
+p0 <- parameter(name='p0',init=0.2,priorDist='Uniform',priorPar=c(0,1)) 
+meanlog <- parameter(name='meanlog',init=0) 
+sdlog <- parameter(name='sdlog',init=0.1) 
+```
+
+set Model and run!
+
+```{r}
+mod <- model(dataset=dat,varName=c('isZero','nzFlow'),parentDist=c('Bernoulli','LogNormal'),
+             par=list(p0,meanlog,sdlog),
+             formula=c('prob = p0','meanlog = meanlog','sdlog = sdlog'))
+STooDs(model=mod)
+```
+
+
+XXX
+```{r}
+mcmc <- read.table(file.path('STooDs_workspace','MCMC.txt'),header=T,sep=';')
+npar=3;par(mfrow=c(npar,2))
+for(i in 1:npar){
+  plot(mcmc[,i],type='l',ylab=names(mcmc)[i])
+  hist(mcmc[500:NROW(mcmc),i],main='',xlab=names(mcmc)[i],freq=FALSE)
+}
+```
+
+### ENSO effect
+
+```{r}
+dat <- dataset(
+  Y=c(v1,v2),
+  var=c(rep('isZero',NROW(v1)),rep('nzFlow',NROW(v2))),
+  X=data.frame(nino=c(elNino$nino,elNino$nino[!isZero]))
+  )
+```
+
+```{r}
+p0 <- parameter(name='p0',init=-2) 
+ENSO.p0 <- parameter(name='ENSO.p0',init=0) 
+meanlog <- parameter(name='meanlog',init=0)
+ENSO.meanlog <- parameter(name='ENSO.meanlog',init=0) 
+sdlog <- parameter(name='sdlog',init=0.1) 
+```
+
+set Model and run!
+
+```{r}
+mod <- model(dataset=dat,
+             varName=c('isZero','nzFlow'),parentDist=c('Bernoulli','LogNormal'),
+             par=list(p0,ENSO.p0,meanlog,ENSO.meanlog,sdlog),
+             formula=c(
+               'prob = 1/(1+exp(-1*(p0+ENSO.p0*nino)))',
+               'meanlog = meanlog+ENSO.meanlog*nino',
+               'sdlog = sdlog'
+               )
+             )
+STooDs(model=mod)
+```
+
+XXX
+```{r,fig.height=10}
+mcmc <- read.table(file.path('STooDs_workspace','MCMC.txt'),header=T,sep=';')
+npar=5;par(mfrow=c(npar,2))
+for(i in 1:npar){
+  plot(mcmc[,i],type='l',ylab=names(mcmc)[i])
+  hist(mcmc[500:NROW(mcmc),i],main='',xlab=names(mcmc)[i],freq=FALSE)
+}
+```
+
+## Handling zeros, approach 2: rectified distribution
+
+### IID model 
+
+Create a dataset with a single variable but treat zeros as censored values.
+
+```{r}
+isZero=springFlow$station2==0 # zero-flow mask
+cType <- rep(0,NROW(springFlow)) # initialize censoring type at zero (no censoring)
+cType[isZero] <- -1 # consider zeros as "less than" censored values 
+# define STooDs dataset
+dat <- dataset(Y=springFlow$station2,cType=cType)
+```
+
+
+Use a 3-parameter GPD distribution. Will be "chopped" below zero.
+
+```{r}
+theshold <- parameter(name='threshold',init=-0.1) 
+scale <- parameter(name='scale',init=1) 
+shape <- parameter(name='shape',init=0) 
+```
+
+set Model and run!
+
+```{r}
+mod <- model(dataset=dat,parentDist='GPD',
+             par=list(theshold,scale,shape),
+             formula=c('threshold = threshold','scale = scale','shape = shape'))
+STooDs(model=mod)
+```
+
+
+XXX
+```{r}
+mcmc <- read.table(file.path('STooDs_workspace','MCMC.txt'),header=T,sep=';')
+npar=3;par(mfrow=c(npar,2))
+for(i in 1:npar){
+  plot(mcmc[,i],type='l',ylab=names(mcmc)[i])
+  hist(mcmc[1000:NROW(mcmc),i],main='',xlab=names(mcmc)[i],freq=FALSE)
+}
+```
+
+Translate this in terms of probability of zero. WARNING: STooDs convention for shape is opposite from R convention!
+
+```{r}
+require(evd)
+p0=vector('numeric',NROW(mcmc))
+for(i in 1:NROW(mcmc)){
+  p0[i] <- pgpd(0,loc=mcmc$threshold[i],scale=mcmc$scale[i],shape=-1*mcmc$shape[i])
+}
+plot(p0,type='l',ylab='p0')
+hist(p0[1000:NROW(p0)],main='',xlab='p0',freq=FALSE)
+```
+
+### ENSO effect
+Just add ENSO to the previous dataset:
+
+```{r}
+dat <- dataset(Y=springFlow$station2,cType=cType,X=elNino['nino'])
+```
+
+Nino effect on the threshold parameter: will affect both the probability of zero and the distribution of non-zero flows.
+
+```{r}
+theshold <- parameter(name='threshold',init=-0.1)
+ENSO.effect <- parameter(name='ENSO.effect',init=0) 
+scale <- parameter(name='scale',init=1) 
+shape <- parameter(name='shape',init=0) 
+```
+
+set Model and run!
+
+```{r}
+mod <- model(dataset=dat,parentDist='GPD',
+             par=list(theshold,ENSO.effect,scale,shape),
+             formula=c('threshold = threshold+ENSO.effect*nino',
+                       'scale = scale','shape = shape'))
+STooDs(model=mod)
+```
+
+
+XXX
+```{r,fig.height=10}
+mcmc <- read.table(file.path('STooDs_workspace','MCMC.txt'),header=T,sep=';')
+npar=4;par(mfrow=c(npar,2))
+for(i in 1:npar){
+  plot(mcmc[,i],type='l',ylab=names(mcmc)[i])
+  hist(mcmc[1000:NROW(mcmc),i],main='',xlab=names(mcmc)[i],freq=FALSE)
+}
+```
+
+## Comparison of the two approaches
+2DO
+
+
+<!-- # Multi-site analysis -->
+
+<!-- We'll use the 'rectified distribution' approach. -->
+
+<!-- ## Preparing data -->
+
+<!-- ```{r} -->
+<!-- nSite <- NCOL(springMean)-1 -->
+<!-- # initialize empty data frames -->
+<!-- Y=data.frame(value=numeric()) # flows -->
+<!-- X=data.frame(nino_3.4=numeric()) # el nino -->
+<!-- cType=data.frame(type=numeric()) # censoring type -->
+<!-- iSpace=data.frame(space=integer()) # space index -->
+<!-- for(site in 1:nSite){ -->
+<!--   isZero=springMean[,site+1]==0 -->
+<!--   Y=rbind(Y,data.frame(value=springMean[,site+1])) -->
+<!--   X=rbind(X,data.frame(nino_3.4=elNino$nino_3.4)) -->
+<!--   cType=rbind(cType,data.frame(type=ifelse(isZero,-1,0))) -->
+<!--   iSpace=rbind(iSpace,data.frame(space=rep(site,NROW(springMean)))) -->
+<!-- } -->
+
+<!-- dat <- dataset(Y=Y,X=X,iDim=iSpace,cType=cType) -->
+
+<!-- ``` -->
+
+<!-- ## Model 1: everything is site-specific  -->
+<!-- Space dimension and associated processes: -->
+
+<!-- ```{r} -->
+<!-- space <- dimension(name='space',coord=stations[c('lon','lat')],d=distance('Haversine'),z=stations['area']) -->
+<!-- threshold <- process(name='threshold',dim=space,init=-2) -->
+<!-- scale <- process(name='scale',dim=space,init=1) -->
+<!-- shape <- process(name='shape',dim=space,init=0)  -->
+<!-- ``` -->
+
+<!-- set Model and run! -->
+
+<!-- ```{r} -->
+<!-- mod <- model(dataset=dat,parentDist='GPD', -->
+<!--              process=list(threshold,scale,shape), -->
+<!--              formula=c('threshold=scale*threshold','scale=scale','shape=shape')) -->
+<!-- workspace <- file.path(wd,'STooDs_workspace') -->
+<!-- STooDs(model=mod,workspace=workspace,dir.exe=dir.exe) -->
+<!-- ``` -->
+
+<!-- XXX -->
+<!-- ```{r} -->
+<!-- mcmc <- read.table(file.path(workspace,'MCMC.txt'),header=T,sep=';') -->
+<!-- ``` -->
+
+
+<!-- ```{r} -->
+<!-- boxplot(mcmc[1000:NROW(mcmc),1:nSite],names=1:nSite, -->
+<!--         xlab='Station',ylab='threshold') -->
+<!-- ``` -->
+
+
+<!-- ```{r} -->
+<!-- boxplot(mcmc[1000:NROW(mcmc),nSite+(1:nSite)],names=1:nSite, -->
+<!--         xlab='Station',ylab='scale') -->
+<!-- `` -->
+<!-- ```{r} -->
+<!-- sc <- apply(mcmc[1000:NROW(mcmc),nSite+(1:nSite)],2,median) -->
+<!-- plot(log(space$z$area),sc) -->
+<!-- ```` -->
+
+
+<!-- ```{r} -->
+<!-- boxplot(mcmc[1000:NROW(mcmc),2*nSite+(1:nSite)],names=1:nSite, -->
+<!--         xlab='Station',ylab='shape') -->
+<!-- ``` -->
+
+
+<!-- ## Model 1: Add some constraints  -->
+<!-- Space dimension and associated processes: -->
+
+<!-- ```{r} -->
+<!-- # p0 IID Gaussian spatial process -->
+<!-- p0.mean <- parameter(name='p0.mean',init=-2) -->
+<!-- p0.sd <- parameter(name='p0.sd',init=0.1,priorDist='FlatPrior+') -->
+<!-- p0 <- process(name='p0',dim=space,init=-2, -->
+<!--               dist='Gaussian_IID', -->
+<!--               par=list(p0.mean,p0.sd),iScalarPar=c(1,2)) -->
+<!-- # ENSO effect on p0: constant -->
+<!-- ENSO.p0 <- parameter(name='ENSO.p0',init=0) -->
+<!-- # meanlog Gaussian spatial process -->
+<!-- meanlog.mu0 <- parameter(name='meanlog.mu0',init=0) -->
+<!-- meanlog.Aeffect <- parameter(name='meanlog.Aeffect',init=0) -->
+<!-- meanlog.sill <- parameter(name='meanlog.sill',init=0.1,priorDist='FlatPrior+') -->
+<!-- meanlog.range <- parameter(name='meanlog.range',init=1.,priorDist='Exponential',priorPar=c(0,5)) -->
+<!-- meanlog <- process(name='meanlog',dim=space,init=0, -->
+<!--                    dist='Gaussian', -->
+<!--                    par=list(meanlog.mu0,meanlog.Aeffect,meanlog.sill,meanlog.range), -->
+<!--                    fMean='meanlog.mu0+meanlog.Aeffect*area', -->
+<!--                    fCovar='(meanlog.sill^2)*exp(-Dspace/meanlog.range)') -->
+<!-- # ENSO effect on meanlog: constant -->
+<!-- ENSO.meanlog <- parameter(name='ENSO.meanlog',init=0)  -->
+<!-- # sdlog: no contraint -->
+<!-- sdlog <- process(name='sdlog',dim=space,init=0.1)  -->
+<!-- ``` -->
+
+<!-- set Model and run! -->
+
+<!-- ```{r} -->
+<!-- mod <- model(dataset=dat,parentDist=c('Bernoulli','LogNormal'), -->
+<!--              process=list(p0,meanlog,sdlog), -->
+<!--              par=list(ENSO.p0,ENSO.meanlog), -->
+<!--              formula=c( -->
+<!--                'prob = 1/(1+exp(-1*(p0+ENSO.p0*nino_3.4)))', -->
+<!--                'meanlog = meanlog+ENSO.meanlog*nino_3.4', -->
+<!--                'sdlog = sdlog' -->
+<!--                ) -->
+<!--              ) -->
+<!-- workspace <- file.path(wd,'STooDs_workspace') -->
+<!-- STooDs(model=mod,workspace=workspace,dir.exe=dir.exe) -->
+<!-- ``` -->
+
+<!-- XXX -->
+<!-- ```{r} -->
+<!-- mcmc <- read.table(file.path(workspace,'MCMC.txt'),header=T,sep=';') -->
+<!-- npar=2;par(mfrow=c(npar,2)) -->
+<!-- for(i in 1:npar){ -->
+<!--   plot(mcmc[,i],type='l',ylab=names(mcmc)[i]) -->
+<!--   hist(mcmc[500:NROW(mcmc),i],main='',xlab=names(mcmc)[i],freq=FALSE) -->
+<!-- } -->
+<!-- ``` -->
+
+<!-- $p_0$ process: -->
+<!-- ```{r} -->
+<!-- boxplot(mcmc[500:NROW(mcmc),2+(1:nSite)],names=1:nSite, -->
+<!--         xlab='Station',ylab='Probability of zero') -->
+<!-- npar=2;par(mfrow=c(npar,2)) -->
+<!-- for(i in 2+nSite+(1:npar)){ -->
+<!--   plot(mcmc[,i],type='l',ylab=names(mcmc)[i]) -->
+<!--   hist(mcmc[500:NROW(mcmc),i],main='',xlab=names(mcmc)[i],freq=FALSE) -->
+<!-- } -->
+<!-- ``` -->
+
+<!-- $meanlog$ process: -->
+<!-- ```{r,fig.height=10} -->
+<!-- boxplot(mcmc[500:NROW(mcmc),2+nSite+2+(1:nSite)],names=1:nSite, -->
+<!--         xlab='Station',ylab='meanlog') -->
+<!-- npar=4;par(mfrow=c(npar,2)) -->
+<!-- for(i in 2+nSite+2+nSite+(1:npar)){ -->
+<!--   plot(mcmc[,i],type='l',ylab=names(mcmc)[i]) -->
+<!--   hist(mcmc[500:NROW(mcmc),i],main='',xlab=names(mcmc)[i],freq=FALSE) -->
+<!-- } -->
+<!-- ``` -->
+
+<!-- $sdlog$ process: -->
+<!-- ```{r} -->
+<!-- boxplot(mcmc[500:NROW(mcmc),2+nSite+2+nSite+4+(1:nSite)],names=1:nSite, -->
+<!--         xlab='Station',ylab='sdlog') -->
+<!-- ``` -->

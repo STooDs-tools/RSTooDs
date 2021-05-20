@@ -1,0 +1,157 @@
+---
+title: "Getting started"
+subtitle: "Illustration with annual precipitation in Perth, Australia"
+author: "Ben Renard"
+date: "21/10/2019"
+output: 
+  html_document: 
+    number_sections: yes
+    toc: yes
+vignette: >
+  %\VignetteIndexEntry{Getting started}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=TRUE,results='hide')
+```
+# Introduction and aims
+This "getting started" case study demonstrates how to estimate the parameters of a distribution using a sample of data. It aims at introducing several key STooDs concepts: `dataset`, `parameter` and `model` objects. So let's load RSTooDs and let's get it started!
+
+```{r}
+library(RSTooDs)
+```
+
+# Definition of the inference setup
+In this case study, we start by considering the simplest possible STooDs model, where data are assumed to be independant and identically distributed (*iid*) realisations from a parent distribution parameterized by $\boldsymbol{\theta}=(\theta_1,...,\theta_{N_D})$:  
+$$\forall i=1,...,n: y_i \sim D(\boldsymbol{\theta})$$
+
+The objective is to estimate $\boldsymbol{\theta}$ based on data $\boldsymbol{y}=(y_1,...,y_n)$ using STooDs. To achieve this, we need to define a few objects to let STooDs know the ingredients of the case study:
+
+1. a **dataset** containing the estimation data $\boldsymbol{y}$
+2. a list of **parameters** $\boldsymbol{\theta}=(\theta_1,...,\theta_{N_D})$ to be estimated, including prior information on these parameters
+3. a **model** containing the distributional assumptions: what distribution is assumed to have generated data $\boldsymbol{y}$? 
+
+## Dataset object
+Let's assume that we want to analyse annual precipitation in Perth, Australia. Data recorded by the Bureau of Meteorology for the period 1999-2018 are given and plotted below. Data can be accessed [here](http://www.bom.gov.au/jsp/ncc/cdio/weatherData/av?p_nccObsCode=139&p_display_type=dataFile&p_startYear=&p_c=&p_stn_num=009225).
+
+
+```{r}
+perth.pp <- c(822,796,689,738,854,637,875,467,703,808,607,504,861,608,782,674,618,716,854,742)
+plot(1999:2018,perth.pp,pch=19,xlab='Year',ylab='Annual pp in Perth [mm]')
+```
+
+A `dataset` object is created by calling the function `dataset` as shown below.
+
+```{r}
+dat <- dataset(Y=data.frame(perth.pp))
+```
+
+## Parameter objects
+We are going to assume that Perth precipitation data are realisations from a lognormal distribution, and we want to estimate its parameters $\mu$ (expectation of log-variable) and $\sigma$ (standard deviation of log-variable). We are therefore going to define two `parameter` objects using the function `parameter` as illustrated below:
+
+```{r}
+mu <- parameter(name='mu',init=0) # by default prior = 'Flatprior'  
+sigma <- parameter(name='sigma',init=0.5,priorDist='Exponential',priorPar=c(0,0.5))
+```
+
+`init` is an initial guess, `priorDist` is the prior distribution and `priorPar` its parameters. By default an improper flat prior distribution is used. The list of prior distributions available in STooDs can be obtained as follows:
+
+
+```{r,results='markup'}
+getCatalogue()$distribution
+```
+
+Since there are several parameters to be estimated, there are stacked in a list:
+
+```{r}
+param <- list(mu,sigma)
+```
+
+## Model object
+
+A `model` object is created by calling the function `model` as shown below: 
+
+```{r}
+mod <- model(dataset=dat,parentDist='LogNormal',par=param)
+```
+
+This object aggregates all the information needed to perform the inference:
+
+1. the data $\boldsymbol{y}$ contained in the `dataset` object `dat`
+2. the assumed parent distribution (here, a lognormal)
+3. the inferred parameters $\boldsymbol{\theta}$ contained in the list of `parameter` objects `param`
+
+# Running STooDs and analysing its outputs
+
+## MCMC sampling
+The information contained in the model object `mod` allows computing the posterior distribution of unknown parameters $\boldsymbol{\theta}$ given the data $\boldsymbol{y}$, noted $p(\boldsymbol{\theta} | \boldsymbol{y})$. The function `STooDs` runs a MCMC sampler to explore this posterior distribution. 
+<!-- `dir.exe` is the directory where STooDs executable stands on your machine; `workspace` is the directory where STooDs configuration and result files will be written. -->
+
+```{r}
+STooDs(model=mod)
+```
+
+
+## MCMC result file
+
+The main outcome of a STooDs run is a file 'MCMC.txt' containing the mcmc samples, and located in the subfolder 'STooDs_workspace' of your working directory (folder and file names can of course be changed - type ?STooDs for details). Let's see what this MCMC file looks like:
+
+```{r,results='markup'}
+mcmc <- read.table(file.path('STooDs_workspace','MCMC.txt'),header=T,sep=';')
+head(mcmc)
+```
+
+
+The first two columns contain the samples for the two unknown parameters $\boldsymbol{\theta} = (\mu,\sigma)$. The next four columns contain the components of the posterior log-pdf:
+
+1. the prior log-pdf  $log(p(\boldsymbol{\theta}))$
+2. the log-likelihood  $log(p(\boldsymbol{y} | \boldsymbol{\theta}))$
+3. the hierarchical component (unused here)
+4. the posterior unnormalized log-pdf: $log(p(\boldsymbol{\theta}|\boldsymbol{y})) = log(p(\boldsymbol{y} | \boldsymbol{\theta})) + log(p(\boldsymbol{\theta}))$
+
+## Using MCMC samples
+
+In general, the first thing to do is to have a look at the simulated values to verify that MCMC convergence is acceptable. The figures below suggest that after wandering around for the first few iterations, the simulations quickly stabilize in an area corresponding to the posterior high-density region.
+
+```{r}
+npar=2;par(mfrow=c(1,npar))
+for(i in 1:npar){plot(mcmc[,i],type='l',ylab=names(mcmc)[i])}
+```
+
+The first few iterations are affected by the poorly-chosen starting points and are generaly discarded (or "burned"). Moreover, it is also a usual practice to thin (or "slim" or "slice") the remaining simulations by keeping only one value every e.g. 10. This is made in order to reduce storage, memory or computing time issues when using MCMC samples (this is not a real issue for the very simple model considered here, but it might become one for more complex models). Since MCMC simulations tend to be highly autocorrelated, not much information is lost from such thinning. The code below show the "cooked" (as opposed to "raw") samples resulting from this burning/thinning operation.
+
+```{r}
+keep=seq(1000,NROW(mcmc),10)
+par(mfrow=c(1,npar))
+for(i in 1:npar){plot(mcmc[keep,i],type='l',ylab=names(mcmc)[i])}
+```
+
+Doing histograms of MCMC-simulated values then provides an estimate of the posterior distribution of each parameter. In turn, this provides a point-estimate of the parameters (typically the posterior mode, median or mean) and, importantly, a quantification of the associated uncertainty.
+
+```{r}
+npar=2;par(mfrow=c(1,npar))
+for(i in 1:npar){hist(mcmc[keep,i],main='',xlab=names(mcmc)[i],freq=FALSE)}
+```
+
+The estimated parameters can then be used in a number of ways depending of the purpose of the analysis. For instance, the code below does a basic model check by comparing the estimated lognormal pdf (using the posterior median as parameter estimates) with the observed precipitation data. 
+
+```{r}
+# Estimated lognormal 
+pp <- seq(400,1200,length.out=100)
+d <- dlnorm(pp,meanlog=median(mcmc[keep,1]),sdlog=median(mcmc[keep,2]))
+plot(pp,d,type='l',xlab = 'precipitation [mm]',ylab='density')
+# Observations
+points(perth.pp,rep(0,length(perth.pp)),pch=19,col='red')
+```
+
+The code below computes the 100-year precipitation (i.e. the precipitation that has a probability 1/100 of being exceeded every year), and its uncertainty (which is large!)
+
+```{r}
+p100 <- qlnorm(1-1/100,meanlog=mcmc[keep,1],sdlog=mcmc[keep,2])
+hist(p100,main='',xlab='100-year precipitation [mm]',ylab='density',freq=FALSE)
+```
+
+# Conclusion and outlook
+This case study illustrated what is arguably the simplest setup to be considered in STooDs: estimating the parameters of a distribution based on *iid* data. It sets the scene by introducing the basic STooDs objects (`dataset`, `parameter` and `model`) and paves the way for more advanced models. The next case study considers the case where the parameters of the distribution change as a function of covariates.

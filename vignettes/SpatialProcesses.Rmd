@@ -1,0 +1,261 @@
+---
+title: "Using Covariates: Flood occurrences at many sites"
+author: "Ben Renard"
+date: "23/09/2019"
+output: 
+  html_document: 
+    number_sections: yes
+    toc: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,results='hide')
+```
+
+# 2DO
+In this case study, we start by considering the simplest possible STooDs model, where data are assumed to be independant and identically distributed (*iid*) realisations from a parent distribution parameterized by $\boldsymbol{\varphi}=(\varphi_1,...,\varphi_{N_D})$:
+$$\forall i=1,...,n: y_i \sim D(\boldsymbol{\varphi})$$
+
+The objective is to estimate $\boldsymbol{\varphi}$ based on data $\boldsymbol{y}=(y_1,...,y_n)$ using STooDs. To achieve this, we need to define a few objects to let STooDs know the ingredients of the case study:
+
+1. a **dataset** containing the estimation data $\boldsymbol{y}$, plus possibly other data that will be discussed in subsequent case studies (e.g. covariates, dimension indices)
+2. a list of **parameters** $\boldsymbol{\theta}=(\theta_1,...,\theta_{N_P})$ to be estimated, including prior information on these parameters. Note that we use distinct symbols for the parameters to be estimated $\boldsymbol{\theta}$ and the parameters of the parent distribution $\boldsymbol{\varphi}$: the reason for this will become apparent soon.
+3. a **model** containing the distributional assumptions: what distribution is assumed to have generated data $\boldsymbol{y}$?
+
+
+This object aggregates all the information needed to perform the inference:
+
+1. the data $\boldsymbol{y}$ contained in the `dataset` object `dat`
+2. the assumed parent distribution (here, a lognormal)
+3. the inferred parameters $\boldsymbol{\theta}$ contained in the list of `parameter` objects `param`
+4. the formulas used to compute the parent parameters $\boldsymbol{\varphi}$ from the inferred parameters $\boldsymbol{\theta}$.
+
+The last point requires a few more explanations. `formula` is a vector of size $N_D$ (the number of parameters of the parent distribution). It specifies how each parent parameter $\varphi_k$  can be computed from the inferred parameters $\boldsymbol{\theta}$: $\varphi_k=f_k(\boldsymbol{\theta})$. Here, the formulas are just stating that the first parameter of the lognormal distribution ('meanlog') is equal to the first inferred parameter ('mu'), and the second parameter of the lognormal distribution ('sdlog') is equal to the second inferred parameter ('sigma').
+
+The use of such formulas might seem unnecessarily complicated here - and indeed, its is. However, the generality of STooDs lies in those formulas, as will become apparent in the subsequent case studies. As a foretaste, consider the case where we want to estimate a trend in the parameter 'meanlog' of the lognormal distribution: this can be achieved by defining a third infered parameter 'trend', a covariate 'year', and using the formulas: `c('meanlog=mu+trend*year','sdlog=sigma')`. More on this in the next case study.
+
+# Preliminaries
+
+Load STooDs:
+
+```{r}
+# Define directories for STooDs.R and STooDs.exe  
+dir.R <- 'C:/BEN/FORGE/HydroStat/trunk/R/src'
+dir.exe <- 'C:/BEN/FORGE/HydroStat/branches/Ben/MECA/IVF_MECA/STooDs/Release'
+# Load STooDs.R
+wd <- getwd() # save current working directory
+setwd(dir.R);source('STooDs.R') # source
+setwd(wd) # come back to original working directory
+```
+
+# Estimating a stationary Bernouilli distribution in space and time
+
+## Defining objects
+
+Dataset (note removal of NA):
+
+```{r}
+require(tidyr)
+longDataset <- gather(springFlood,key='station',value='flood',-1)
+dat <- dataset(Y=longDataset['flood'])
+```
+
+Parameters:
+
+```{r}
+prob <- parameter(name='prob',init=0.5) 
+```
+
+Model:
+
+```{r}
+mod <- model(dataset=dat,parentDist='Bernoulli',par=prob,formula='prob = prob')
+```
+
+## Running STooDs
+
+XXX
+```{r}
+workspace <- file.path(wd,'STooDs_workspace')
+#STooDs(model=mod,workspace=workspace,dir.exe=dir.exe)
+```
+
+## Analysing STooDs results
+
+XXX
+```{r}
+#mcmc <- read.table(file.path(workspace,'MCMC.txt'),header=T,sep=';')
+#npar=1;par(mfrow=c(npar,2))
+#for(i in 1:npar){
+#  plot(mcmc[,i],type='l',ylab=names(mcmc)[i])
+#  hist(mcmc[500:NROW(mcmc),i],main='',xlab=names(mcmc)[i],freq=FALSE)
+#  }
+```
+
+# Making flood probability vary in space
+
+## Defining objects
+
+Dataset:
+
+```{r}
+require(tidyr)
+longDataset <- gather(springFlood,key='station',value='flood',-1)
+st <- longDataset$station
+st_indx <- as.integer(substr(st,8,nchar(st)))
+dat <- dataset(Y=longDataset['flood'],
+               iDim=data.frame(space=st_indx))
+```
+
+Space dimension and associated process:
+
+```{r}
+space <- dimension(name='space',coord=stations[c('lon','lat')],d=distance('Haversine'))
+prob <- process(name='prob',dim=space,init=0.2) 
+```
+
+Model:
+
+```{r}
+mod <- model(dataset=dat,parentDist='Bernoulli',process=prob,formula='prob = prob')
+```
+
+## Running STooDs
+
+XXX
+```{r}
+#STooDs(model=mod,workspace=workspace,dir.exe=dir.exe)
+```
+
+## Analysing STooDs results
+
+XXX
+```{r}
+#mcmc <- read.table(file.path(workspace,'MCMC.txt'),header=T,sep=';')
+#boxplot(mcmc[500:NROW(mcmc),1:NROW(stations)],names=1:NROW(stations),
+#        xlab='Station',ylab='Flood probability')
+```
+
+# Making flood probability vary in space and time 
+
+## Defining objects
+
+Dataset:
+
+```{r}
+require(tidyr)
+longDataset <- gather(cbind(nino_3.4=elNino$nino_3.4,springFlood),
+                      key='station',value='flood',-c(1,2))
+st <- longDataset$station
+st_indx <- as.integer(substr(st,8,nchar(st)))
+dat <- dataset(Y=longDataset['flood'],
+               X=longDataset['nino_3.4'],
+               iDim=data.frame(space=st_indx))
+```
+
+Parameters:
+
+```{r}
+p0 <- parameter(name='p0',init=-1) 
+```
+
+
+Space dimension and associated process (ENSO effect):
+
+```{r}
+space <- dimension(name='space',coord=stations[c('lon','lat')],d=distance('Haversine'))
+ENSO.effect <- process(name='ENSO.effect',dim=space,init=0) 
+```
+
+Model:
+
+```{r}
+mod <- model(dataset=dat,parentDist='Bernoulli',
+             process=ENSO.effect,par=p0,
+             formula='prob = 1/(1+exp(-1*(p0+ENSO.effect*nino_3.4)))')
+```
+
+## Running STooDs
+
+XXX
+```{r}
+#STooDs(model=mod,workspace=workspace,dir.exe=dir.exe)
+```
+
+## Analysing STooDs results
+
+XXX
+```{r}
+#mcmc <- read.table(file.path(workspace,'MCMC.txt'),header=T,sep=';')
+#boxplot(mcmc[500:NROW(mcmc),1+(1:NROW(stations))],names=1:NROW(stations),
+#        xlab='Station',ylab='ENSO effect')
+```
+
+# Hierarchical modeling
+
+## IID Gaussian spatial process
+
+```{r}
+hmean <- parameter(name='hmean',init=0)
+hsd <- parameter(name='hsd',init=0.1,priorDist='FlatPrior+')
+
+ENSO.effect <- process(name='ENSO.effect',dim=space,init=0,
+                       dist='Gaussian_IID',
+                       par=list(hmean,hsd),iScalarPar=c(1,2)) 
+```
+
+Model:
+
+```{r}
+mod <- model(dataset=dat,parentDist='Bernoulli',
+             process=ENSO.effect,par=p0,
+             formula='prob = 1/(1+exp(-1*(p0+ENSO.effect*nino_3.4)))')
+#STooDs(model=mod,workspace=workspace,dir.exe=dir.exe)
+```
+
+XXX
+```{r}
+#mcmc <- read.table(file.path(workspace,'MCMC.txt'),header=T,sep=';')
+#boxplot(mcmc[500:NROW(mcmc),1+(1:NROW(stations))],names=1:NROW(stations),
+#        xlab='Station',ylab='ENSO effect')
+#npar=2;par(mfrow=c(npar,2))
+#for(i in 1+NROW(stations)+(1:npar)){
+#  plot(mcmc[,i],type='l',ylab=names(mcmc)[i])
+#  hist(mcmc[500:NROW(mcmc),i],main='',xlab=names(mcmc)[i],freq=FALSE)
+#  }
+```
+
+## Full Gaussian spatial process
+
+```{r}
+hmean <- parameter(name='hmean',init=0)
+hsill <- parameter(name='hsill',init=0.1,priorDist='FlatPrior+')
+hsrange <- parameter(name='hrange',init=1.,priorDist='Exponential',priorPar=c(0,5))
+
+ENSO.effect <- process(name='ENSO.effect',dim=space,init=0,
+                       dist='Gaussian',
+                       par=list(hmean,hsill,hsrange),
+                       fMean='hmean',
+                       fCovar='(hsill^2)*exp(-Dspace/hrange)') 
+```
+
+Model:
+
+```{r}
+mod <- model(dataset=dat,parentDist='Bernoulli',
+             process=ENSO.effect,par=p0,
+             formula='prob = 1/(1+exp(-1*(p0+ENSO.effect*nino_3.4)))')
+#STooDs(model=mod,workspace=workspace,dir.exe=dir.exe)
+```
+
+XXX
+```{r}
+#mcmc <- read.table(file.path(workspace,'MCMC.txt'),header=T,sep=';')
+#boxplot(mcmc[500:NROW(mcmc),1+(1:NROW(stations))],names=1:NROW(stations),
+#        xlab='Station',ylab='ENSO effect')
+#npar=3;par(mfrow=c(npar,2))
+#for(i in 1+NROW(stations)+(1:npar)){
+#  plot(mcmc[,i],type='l',ylab=names(mcmc)[i])
+#  hist(mcmc[500:NROW(mcmc),i],main='',xlab=names(mcmc)[i],freq=FALSE)
+#  }
+```

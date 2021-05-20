@@ -1,0 +1,295 @@
+---
+title: "Using Covariates"
+subtitle: "Illustration with the effect of El Niño on flood occurrences"
+author: "Ben Renard"
+date: "22/10/2019"
+output: 
+  html_document: 
+    number_sections: yes
+    toc: yes
+vignette: >
+  %\VignetteIndexEntry{Using Covariates}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Introduction and aims
+This case study considers the case where the parameters of the distribution change as a function of covariates: this can be handled in STooDs by using **formulas**. The case study starts with setting up the estimation of a common distribution for all data, then illustrates how this setup can be modified to introduce covariate effects.
+
+# Preliminaries
+
+Start by loading RSTooDs:
+
+```{r}
+library(RSTooDs)
+```
+
+We use a dataset of spring flood occurrences in 42 east-Australian sites. The corresponding dataframe `springFlood` is loaded together with `STooDs.R`. We will use for instance site 39:
+
+```{r}
+myData <- data.frame(year=springFlood$year,flood=springFlood$station39)
+plot(myData,pch=19,xlab='Year',ylab='Flood occurrence [0 = no, 1 = yes]')
+```
+
+
+# The *iid* case: estimating a common Bernoulli distribution 
+
+## Inference setup
+
+Given the binary 0/1 nature of the data, they are assumed to be realizations from a Bernoulli distribution, with parameter $\theta$ equal to the probability of occurrence:  
+$$\forall i=1,...,n: y_i \sim Bernoulli(\theta)$$
+
+## Defining objects
+We proceed as in the previous "getting started" case study by defining the three basic STooDs objects: the `dataset` (containing the 0/1 data $\boldsymbol{y}$), the `parameter` to be estimated (the probability of occurrence $\theta$, with a uniform prior betwen 0 and 1), and the `model` (which gathers the estimation data, the assumed distribution and the parameter to be estimated):
+
+```{r}
+dat <- dataset(Y=myData['flood'])
+prob <- parameter(name='prob',init=0.5,priorDist='Uniform',priorPar=c(0,1)) 
+mod <- model(dataset=dat,parentDist='Bernoulli',par=prob)
+```
+
+A quick remark on the `dataset` object: it is a list containing several data frames, amongst which `dat$Y` contains the estimation data $\boldsymbol{y}$ (other data frames are not used here and will be described in subsequent case studies). Note however that the missing data have been removed from the original series:
+
+```{r}
+message=paste0('Original data: n=',NROW(myData['flood']),' ; missing: ',sum(is.na(myData['flood'])))
+message=c(message,paste0('dataset dat$Y: n=',NROW(dat$Y),' ; missing: ',sum(is.na(dat$Y))))
+cat(message,sep="\n") # print each message on its own row.
+```
+
+## Running STooDs and analysing its results
+
+Once the model has been defined, the function `STooDs` can be called to perform MCMC sampling from the posterior distribution $p(\theta|\boldsymbol{y})$:
+
+```{r}
+STooDs(model=mod)
+```
+
+The resulting MCMC samples can then be read from the file 'MCMC.txt' (located in the workspace) and analyzed. The basic figures below suggest that MCMC convergence is quite quick (left panel) and that the estimated probability of occurrence is roughly between 0.1 and 0.35.
+
+```{r}
+mcmc <- read.table(file.path('STooDs_workspace','MCMC.txt'),header=T,sep=';')
+keep=seq(1000,NROW(mcmc),10)
+par(mfrow=c(1,2))
+plot(mcmc[,1],type='l',ylab=names(mcmc)[1])
+hist(mcmc[keep,1],main='',xlab=names(mcmc)[1],freq=FALSE)
+```
+
+# Using a covariate: effect of El Niño on the probability of flood occurrence
+
+The weather in Australia is influenced by several large-scale climate drivers, with the El Niño Southern Oscillation (ENSO) being a prominent one for the East coast. Roughly speaking, El Niño events correspond to drier-than usual conditions, while La Niña events are wetter-than usual (for a more thorough description, have a look [here](http://www.bom.gov.au/climate/about/australian-climate-influences.shtml?bookmark=enso) and [here](http://www.climatekelpie.com.au/)). A natural undertaking is then to quantify the effect of ENSO on the probability of flooding. This can be achived by introducing an ENSO index as a covariate in the previous Bernoulli model: this section demonstrates how this is done with STooDs.
+
+## Inference setup
+
+We still assume that the data for the ith year $(y_i)$ is a realization from a Bernoulli distribution. However, its probability of occurrence $(\varphi_i)$ is not constant any more, but varies from year to year according to the covariate $x_i$, which represents here the value taken by an ENSO index for the ith year:  
+$$y_i \sim Bernoulli(\varphi_i)$$
+$$\varphi_i=\theta_0+\theta_1 x_i$$
+Note the change in notation compared with the *iid* case: the parameter of the parent distribution is now noted $\varphi_i$. It is not directly estimated: instead, the estimated parameters are $\boldsymbol{\theta}=(\theta_0,\theta_1)$, i.e. the parameters controlling the effect of the covariate $x_i$.
+
+Let's now see how this setup can be specified in STooDs. 
+
+## Defining objects
+### Dataset
+The first difference with the *iid* case is that the `dataset` object needs to include the values taken by the covariate $\boldsymbol{x}=(x_1,\dots,x_n)$ (in addition to the data $\boldsymbol{y}$). The ENSO index values are stored in the dataframe `elNino` (which is loaded together with `STooDs.R`), and can be included in the `dataset` object as follows:
+
+```{r}
+dat <- dataset(Y=myData['flood'],X=elNino['nino'])
+```
+
+Note that the data frames used for Y and X need to have the same number of rows, and that rows with missing Y values are fully removed from the `dataset` object (i.e. from both `dat$Y` and `dat$X`):
+
+```{r}
+message=paste0('Original data Y: n=',NROW(myData['flood']),' ; missing: ',sum(is.na(myData['flood'])))
+message=c(message,paste0('Original covariate elNino: n=',NROW(elNino),' ; missing: ',sum(is.na(elNino['nino']))))
+message=c(message,paste0('dataset dat$Y: n=',NROW(dat$Y),' ; missing: ',sum(is.na(dat$Y))))
+message=c(message,paste0('dataset dat$X: n=',NROW(dat$X),' ; missing: ',sum(is.na(dat$X))))
+cat(message,sep="\n") # print each message on its own row.
+```
+
+This dataset is illustrated below: 10 flood occurrences out of 12 occurred when the nino index was negative, i.e. for La Niña conditions. 
+
+```{r}
+plot(dat$X$nino,dat$Y$flood,pch=19,ylab='occurrence (black) / probability (red)',xlab='nino 3.4 index')
+```
+
+### Parameters
+
+Two `parameter` objects now need to be defined. $\theta_0$ is the probability of occurrence when the ENSO index is equal to zero, while $\theta_1$ is theENSO effect:
+
+```{r}
+p0 <- parameter(name='p0',init=0.2,priorDist='Uniform',priorPar=c(0,1)) 
+ENSO.effect <- parameter(name='ENSO.effect',init=0) # by default, flat prior
+param <- list(p0,ENSO.effect)
+```
+
+### Model
+
+The `model` object can now be defined as follows:
+
+```{r}
+mod <- model(dataset=dat,parentDist='Bernoulli',par=param,
+             formula='prob = p0+ENSO.effect*nino')
+```
+
+Compared with the *iid* case, there is a fourth element to be specified (in addition to the dataset, the parent distribution and the parameter vector): the **formula** $\varphi_i=\theta_0+\theta_1 x_i$. A STooDs formula is a character string structured as follows:
+
+1. Two sides separated by an equal sign "=";
+2. The left hand side is the name given to the parent parameter $\varphi_i$;
+3. The right hand side is the formula applied to compute $\varphi_i$ from parameters and covariates. 
+
+Any name can be used for the parent parameter $\varphi_i$ (left hand side). However, the variables used in the right hand side need to correspond to either a parameter name ("p0" and "ENSO.effect") or a covariate name (column names in data frame dat$X, here "nino"). The following line of code for instance will generate an error message: 
+
+```{r,error=TRUE}
+mod <- model(dataset=dat,parentDist='Bernoulli',par=param,
+             formula='prob = p0+theta1*ninoIndex')
+```
+
+## Running STooDs and analysing its results
+
+The remainder of the analysis is identical to the *iid* case. The function `STooDs` is first called to perform MCMC sampling from the posterior distribution $p(\theta|\boldsymbol{y})$:
+
+```{r}
+STooDs(model=mod)
+```
+
+The resulting MCMC samples can then be read and analyzed. As previously, one can start by looking at MCMC trances (left panel) and marginal posterior distributions (right panel).
+
+```{r}
+mcmc <- read.table(file.path('STooDs_workspace','MCMC.txt'),header=T,sep=';')
+npar=2;par(mfrow=c(npar,2))
+for(i in 1:npar){
+  plot(mcmc[,i],type='l',ylab=names(mcmc)[i])
+  hist(mcmc[keep,i],main='',xlab=names(mcmc)[i],freq=FALSE)
+  }
+```
+
+One can then predict (with uncertainty) the flood probability for a given value of the ENSO index. For instance, the figure below shows the predicted flood probability during a strong El Niño event (ENSO index = 2). Comparing it with the "p0" histogram above suggests that the probability is roughly twice smaller than normal.
+
+```{r}
+theta0<-mcmc[keep,1];theta1<-mcmc[keep,2]
+prob=theta0+theta1*2
+hist(prob,main='',xlab='Flood probability for ENSO=2',freq=FALSE)
+```
+
+How about a super-strong El Niño event (ENSO index = 3)? The figure below suggests that the flood probability is even smaller, to the point of being... negative!? This can be avoided by using a slightly modified model as described next. 
+
+```{r}
+prob=theta0+theta1*3
+hist(prob,main='',xlab='Flood probability for ENSO=3',freq=FALSE)
+```
+
+# An alternative El Niño model
+
+## Inference setup
+
+A standard way to avoid the inconvenience above is to use the 
+[inverse-logit transformation](https://en.wikipedia.org/wiki/Logit) defined below:
+
+$$p=invLogit(u)=\frac{1}{1+e^{-u}}$$
+
+This transformation maps the interval $(-\infty;+\infty)$ into the interval $(0;1)$, thus ensuring that the value $p$ is a legitimate probability (strictly) between zero and one. We can therefore use the following formula to define the Bernoulli probability $\varphi_i$:
+
+$$\varphi_i=\frac{1}{1+e^{-(\theta_0+\theta_1 x_i)}}$$
+
+## Defining objects
+
+This alternative model can be passed to STooDs as shown below. Note that the parameter "p0" cannot be interpreted as a probability anymore (but rather as a probability in logit-space): the $U(0;1)$ prior is not adequate anymore and is hence replaced with a default flat prior.
+
+```{r}
+p0 <- parameter(name='p0',init=0) # default flat prior
+ENSO.effect <- parameter(name='ENSO.effect',init=0) # default flat prior
+param <- list(p0,ENSO.effect)
+mod <- model(dataset=dat,parentDist='Bernoulli',par=param,
+             formula='prob = 1/(1+exp(-1*(p0+ENSO.effect*nino)))')
+STooDs(model=mod)
+```
+
+## Results 
+
+MCMC traces and marginal posterior distributions are shown below:
+```{r}
+mcmc <- read.table(file.path('STooDs_workspace','MCMC.txt'),header=T,sep=';')
+npar=2;par(mfrow=c(npar,2))
+for(i in 1:npar){
+  plot(mcmc[,i],type='l',ylab=names(mcmc)[i])
+  hist(mcmc[keep,i],main='',xlab=names(mcmc)[i],freq=FALSE)
+  }
+```
+
+The few lines of code below allow plotting the flood probability (with a 95% uncertainty interval) as a function of the ENSO index, and illustrate that the inverse-logit transformation ensures a well-defined probability between zero and one.
+
+```{r}
+theta0 <- mcmc[keep,1];theta1 <- mcmc[keep,2]
+ENSOgrid=seq(-3,3,0.1)
+prob <- matrix(NA,length(theta0),length(ENSOgrid))
+for(i in 1:NCOL(prob)){
+  prob[,i] <- 1/(1+exp(-1*(theta0+theta1*ENSOgrid[i])))
+}
+plot(ENSOgrid,apply(prob,2,median),type='l',col='red',lwd=2,ylim=c(0,1),xlab='nino 3.4',ylab='occurrence (black) / probability (red)')
+lines(ENSOgrid,apply(prob,2,quantile,0.025),col='red')
+lines(ENSOgrid,apply(prob,2,quantile,0.975),col='red')
+points(dat$X$nino,dat$Y$flood,pch=19)
+```
+
+# Using two covariates
+
+## Inference setup
+
+STooDs allows using any number of covariates (but keep in mind that the ability to estimate covariates effects is limited by the sample size!). For instance, one might be interested in evaluating the existence of a temporal trend, in addition to the ENSO effect. The following formula can be used for instance, where $t_i$ is the time associated with the ith data:
+
+$$\varphi_i=\frac{1}{1+e^{-(\theta_0+\theta_1 x_i+\theta_2 t_i)}}$$
+
+## Defining objects
+
+The two columns of the data frame `elNino` (year and nino_3.4) are now included in the STooDs `dataset`; in addition three parameters now need to be specified. 
+
+```{r}
+dat <- dataset(Y=myData['flood'],X=elNino)
+p0 <- parameter(name='p0',init=0) 
+ENSO.effect <- parameter(name='ENSO.effect',init=0) 
+trend <- parameter(name='trend',init=0) 
+param <- list(p0,ENSO.effect,trend)
+```
+
+The model can be specified with the updated formula below, and MCMC sampling can be performed:
+
+```{r}
+mod <- model(dataset=dat,parentDist='Bernoulli',par=param,
+             formula='prob = 1/(1+exp(-1*(p0+ENSO.effect*nino+trend*year)))')
+STooDs(model=mod)
+```
+
+## Results 
+
+As usual, one can start by visualizing MCMC traces and marginal posterior distributions:
+
+```{r}
+mcmc <- read.table(file.path('STooDs_workspace','MCMC.txt'),header=T,sep=';')
+npar=3;par(mfrow=c(npar,2))
+for(i in 1:npar){
+  plot(mcmc[,i],type='l',ylab=names(mcmc)[i])
+  hist(mcmc[keep,i],main='',xlab=names(mcmc)[i],freq=FALSE)
+  }
+```
+
+Well... it does not look very good! Clearly the traces for parameters "p0" and "trend" are not satisfying. While it may be tempting to blame the MCMC sampler and try to improve it or run it for more iterations, there is a much more straightforward remedy. Indeed, the problem occurs because the covariate "time" is expressed in calendar years. In general the MCMC sampler in STooDs will work better if covariates are "scaled" to avoid either too large (both positive and negative) or too low (close to zero) orders of magnitudes. Here for instance, expressing the time as "years since 1950" instead of calendar year solves the problem: 
+
+```{r}
+mod <- model(dataset=dat,parentDist='Bernoulli',par=param,
+             formula='prob = 1/(1+exp(-1*(p0+ENSO.effect*nino+trend*(year-1950))))')
+STooDs(model=mod)
+mcmc <- read.table(file.path('STooDs_workspace','MCMC.txt'),header=T,sep=';')
+npar=3;par(mfrow=c(npar,2))
+for(i in 1:npar){
+  plot(mcmc[,i],type='l',ylab=names(mcmc)[i])
+  hist(mcmc[keep,i],main='',xlab=names(mcmc)[i],freq=FALSE)
+  }
+```
+
+While the ENSO effect is clearly negative, the trend parameter is roughly centered on zero, indicating that the evidence for a temporal trend is rather weak. 
+
+# Conclusion and outlook
+This case study introduced the first strategy to build STooDs models that move beyond the standard *iid* setting. This strategy is based on the use of formulas to link the parameters of the parent distribution with the values taken by covariate(s). The next case study discusses an alternative strategy, based on the use of **processes** defined on a **dimension** such as space, time, or something else.

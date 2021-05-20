@@ -1,0 +1,224 @@
+---
+title: "Examples of STooDs models"
+subtitle: "Comparing models expressed as equations, STooDs code or graph"
+author: "Ben Renard"
+date: "30/03/2020"
+output: 
+  html_document: 
+    number_sections: yes
+    toc: yes
+vignette: >
+  %\VignetteIndexEntry{Examples of STooDs models}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Introduction and aims
+This vignette aims at providing a few examples of typical STooDs models. Each model is expressed in three ways: (1) mathematical equations; (2) translation of these equations as STooDs code; (3) representation of the resulting STooDs model as a graph. All models are based on the same dataset of East Australian floods
+
+# Preliminaries
+
+Start by loading RSTooDs:
+
+```{r}
+library(RSTooDs)
+```
+
+The dataset `springMax` used here described the spring maximum flow (in mm) at 42 sites in East Australia, over the period 1951-2014. As in previous case studies, the original "wide-format" dataset is transformed into a "long-format" vector format. We also add an extra column to keep track of the values taken by the ENSO index $x_t$, used as a covariate.
+
+```{r}
+nT <- NROW(springFlood); nS <- NCOL(springFlood)-1
+longDataset <- data.frame(Qmax=numeric(nT*nS),nino=numeric(nT*nS),space=integer(nT*nS),time=integer(nT*nS))
+for(s in 1:nS){
+  indx=((s-1)*nT+1):(s*nT)
+  longDataset[indx,]=cbind(Qmax=springMax[,s+1],nino=elNino$nino,space=rep(s,nT),time=1:nT)
+}
+```
+
+Data from site 23 are plotted below as an illustration.
+
+```{r}
+plot(springMax$year,springMax$station23,pch=19,
+     xlab='Year',ylab='Spring maximum flow [mm]')
+```
+
+# Single site: basic *iid* model
+
+## In mathematical notation 
+
+$$y_t \sim Gumbel(\varphi_{1,t},\varphi_{2,t})$$
+
+$$
+\begin{cases}
+  \varphi_{1,t}=\mu_0 \\
+  \varphi_{2,t}=\sigma_0 
+\end{cases}
+$$
+
+## In STooDs 
+
+The code below uses site 23 as an example.
+
+```{r}
+mask <- (longDataset$space==23)
+dat <- dataset(Y=data.frame(Q=longDataset$Qmax[mask]))
+mu0 <- parameter(name='mu0',init=20) 
+sigma0 <- parameter(name='sigma0',init=5) 
+mod <- model(dataset=dat,
+             parentDist='Gumbel',
+             par=list(mu0,sigma0),
+             formula=c('location=mu0','scale=sigma0'))
+```
+
+## As a graph
+
+```{r,results='asis',message=F, warning=F}
+plot(mod)
+```
+
+# Single site: time-varying model
+
+## In mathematical notation 
+
+$$y_t \sim Gumbel(\varphi_{1,t},\varphi_{2,t})$$
+
+$$
+\begin{cases}
+  \varphi_{1,t}=\mu_0(1+\mu_1x_t) \\
+  \varphi_{2,t}=\sigma_0 
+\end{cases}
+$$
+
+## In STooDs 
+
+```{r}
+mask <- (longDataset$space==23)
+dat <- dataset(Y=data.frame(Q=longDataset$Qmax[mask]),
+               X=data.frame(nino=longDataset$nino[mask]))
+mu0 <- parameter(name='mu0',init=20) 
+mu1 <- parameter(name='mu1',init=0)
+sigma0 <- parameter(name='sigma0',init=5)
+mod <- model(dataset=dat,
+             parentDist='Gumbel',
+             par=list(mu0,mu1,sigma0),
+             formula=c('location=mu0*(1+mu1*nino)','scale=sigma0'))
+```
+
+## As a graph
+
+```{r,results='asis',message=F,warning=F}
+plot(mod)
+```
+
+
+# All sites: site-specific model
+
+## In mathematical notation 
+
+$$y_{t,s} \sim Gumbel(\varphi_{1,t,s},\varphi_{2,t,s})$$
+
+$$
+\begin{cases}
+  \varphi_{1,t,s}=\mu_{s} \\
+  \varphi_{2,t,s}=\sigma_{s} 
+\end{cases}
+$$
+
+## In STooDs 
+
+```{r}
+dat <- dataset(Y=data.frame(Q=longDataset$Qmax),
+               iDim=data.frame(space=longDataset$space))
+space <- dimension(name='space',coord=OZstations[c('lon','lat')],d=distance('Haversine'))
+mu <- process(name='mu',init=20,dim=space) 
+sigma <- process(name='sigma',init=5,dim=space)
+mod <- model(dataset=dat,
+             parentDist='Gumbel',
+             process=list(mu,sigma),
+             formula=c('location=mu','scale=sigma'))
+```
+
+## As a graph
+
+```{r,results='asis',message=F,warning=F,fig.height=8,fig.width=10}
+plot(mod)
+```
+
+# All sites: constraining spatial variability (the Index Flood model)
+
+## In mathematical notation 
+
+$$y_{t,s} \sim Gumbel(\varphi_{1,t,s},\varphi_{2,t,s})$$
+
+$$
+\begin{cases}
+  \varphi_{1,t,s}=\mu_{s} \\
+  \varphi_{2,t,s}=\gamma \times \mu_{s} 
+\end{cases}
+$$
+
+## In STooDs 
+
+```{r}
+dat <- dataset(Y=data.frame(Q=longDataset$Qmax),
+               iDim=data.frame(space=longDataset$space))
+space <- dimension(name='space',coord=OZstations[c('lon','lat')],d=distance('Haversine'))
+mu <- process(name='mu',init=20,dim=space) 
+gamma <- parameter(name='gamma',init=0.1,priorDist='LogNormal',priorPar=c(log(0.1),1))
+mod <- model(dataset=dat,
+             parentDist='Gumbel',
+             par=gamma,process=mu,
+             formula=c('location=mu','scale=gamma*mu'))
+```
+
+## As a graph
+
+```{r,results='asis',message=F,warning=F,fig.height=8,fig.width=10}
+plot(mod)
+```
+
+
+# All sites: a less constrained Index Flood model
+
+## In mathematical notation 
+
+$$y_{t,s} \sim Gumbel(\varphi_{1,t,s},\varphi_{2,t,s})$$
+
+$$
+\begin{cases}
+  \varphi_{1,t,s}=\mu_{s} \\
+  \varphi_{2,t,s}=\gamma_{s} \times \mu_{s} 
+\end{cases}
+$$
+
+$$
+\gamma_{s} \sim N(m_\gamma,s_\gamma)
+$$
+
+## In STooDs 
+
+```{r}
+dat <- dataset(Y=data.frame(Q=longDataset$Qmax),
+               iDim=data.frame(space=longDataset$space))
+space <- dimension(name='space',coord=OZstations[c('lon','lat')],d=distance('Haversine'))
+mu <- process(name='mu',init=20,dim=space)
+hypermean <- parameter(name='hypermean',init=0.1) 
+hypersd <- parameter(name='hypersd',init=0.05) 
+gamma <- process(name='gamma',init=0.1,dim=space,
+                 dist='Gaussian_IID',par=list(hypermean,hypersd))
+mod <- model(dataset=dat,
+             parentDist='Gumbel',
+             process=list(mu,gamma),
+             formula=c('location=mu','scale=gamma*mu'))
+```
+
+## As a graph
+
+```{r,results='asis',message=F,warning=F,fig.height=8,fig.width=10}
+plot(mod)
+```
+

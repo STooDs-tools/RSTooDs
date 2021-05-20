@@ -1,0 +1,6 @@
+^.*\.Rproj$
+^\.Rproj\.user$
+^vignettes/STooDs_workspace$
+^doc$
+^Meta$
+^data-raw$

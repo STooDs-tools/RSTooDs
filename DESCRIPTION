@@ -1,0 +1,33 @@
+Package: RSTooDs
+Type: Package
+Title: Models for Data Varying in Space, Time or other Dimensions
+Version: 0.1.0
+Authors@R: person("Benjamin", "Renard", email = "benjamin.renard@irstea.fr",
+    role = c("aut", "cre"))
+Description: STooDs is a framework to build and estimate probabilitic models
+    for data varying in Space, Time or other Dimensions. This R package is 
+    built as an R User Interface (RUI) to the computational STooDs engine, 
+    which is a FORTRAN executable piloted by text configuration files.
+    The RUI defines classes (objects' properties and methods) for the various
+    building blocks of STooDs inference. Its typical usage is as follows:
+    (1) define the probabilistic model and its constitutive objects (dataset,
+    parameters, dimensions, processes); (2) perform Bayesian-MCMC inference;
+    (3) read, analyse and use MCMC samples.
+License: GPL-3
+Encoding: UTF-8
+LazyData: true
+Imports:
+    ggplot2,
+    graphics,
+    grDevices,
+    stats,
+    utils
+Suggests: 
+    gridExtra,
+    maps,
+    networkD3,
+    tidyr,
+    knitr,
+    rmarkdown
+RoxygenNote: 7.1.0
+VignetteBuilder: knitr

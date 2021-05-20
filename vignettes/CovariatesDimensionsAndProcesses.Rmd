@@ -1,0 +1,226 @@
+---
+title: "Covariates, Dimensions and Processes"
+subtitle: "Illustration with the effect of El Niño on flood occurrences at 42 Australian sites"
+author: "Ben Renard"
+date: "29/10/2019"
+output: 
+  html_document: 
+    number_sections: yes
+    toc: yes
+vignette: >
+  %\VignetteIndexEntry{Covariates, Dimensions and Processes}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,results='hide')
+```
+
+# Introduction and aims
+This case study builds on the two previous ones and illustrates how **covariates**, **dimensions**, **processes** and **formulas** can all be used together in STooDs to build flexible probabilistic models.
+
+# Preliminaries
+
+Start by loading RSTooDs:
+
+```{r}
+library(RSTooDs)
+```
+
+We use the same dataset as in the previous case study (spring flood occurrences in East Australia, 1951-2014, 42 sites). As previously, we transform the original dataset from a "wide" matrix format to a "long" vector format. We also add an extra column to keep track of the values taken by the ENSO index $x_t$.
+
+```{r}
+nT <- NROW(springFlood); nS <- NCOL(springFlood)-1
+longDataset <- data.frame(flood=integer(nT*nS),nino=numeric(nT*nS),space=integer(nT*nS),time=integer(nT*nS))
+for(s in 1:nS){
+  indx=((s-1)*nT+1):(s*nT)
+  longDataset[indx,]=cbind(flood=springFlood[,s+1],nino=elNino$nino,space=rep(s,nT),time=1:nT)
+}
+```
+
+# Model 1: no spatial variability
+
+## Inference setup
+
+We start with the rather strong assumption that flood probability does not vary between sites. It only varies in time as a function of the ENSO covariate, whose effect is assumed to be the same at all sites. This leads to a spatially constant model that can be formalized as follows:
+$$\forall s=1,...,N_S;\forall t=1,...,N_T: y_{s,t} \sim Bernoulli(\varphi_t)$$
+$$\varphi_t = \frac{1}{1+e^{-(\theta_0+\theta_1 x_t)}}$$
+
+## Defining objects
+
+We need to define the `dataset` (containing the 0/1 data $\boldsymbol{y}$ and the covariate $\boldsymbol{x}$ in "long vector" format), the `parameter` vector to be estimated (the intercept $\theta_0$ and the ENSO effect $\theta_1$), and the `model` (which gathers the estimation data, the assumed distribution, the list of parameters to be estimated and the formula to compute the parent parameter $\varphi_t$). Note that there is no need to define any process in this model, since no parameter is varying in space or time.
+
+```{r}
+dat <- dataset(Y=longDataset['flood'],X=longDataset['nino'])
+p0 <- parameter(name='p0',init=0) 
+ENSO.effect <- parameter(name='ENSO.effect',init=0) 
+mod <- model(dataset=dat,parentDist='Bernoulli',par=list(p0,ENSO.effect),
+             formula='prob = 1/(1+exp(-1*(p0+ENSO.effect*nino)))')
+```
+
+## Running STooDs and analysing its results
+
+Once the model has been defined, the function `STooDs` can be called to perform MCMC sampling from the posterior distribution $p(\boldsymbol{\theta}|\boldsymbol{y})$:
+
+```{r}
+STooDs(model=mod)
+```
+
+The resulting MCMC samples can then be read and analyzed. The figure below indicates a clearly negative ENSO effect, which is consistent with the knowledge that floods occur more frequently during La Niña events. However the quantification of this effect rests on the strong assumption that it is constant in space. The next section investigates a more flexible model where the ENSO effect is allowed to vary in space.
+
+```{r}
+mcmc <- read.table(file.path('STooDs_workspace','MCMC.txt'),header=T,sep=';')
+keep=seq(1000,NROW(mcmc),10)
+npar=2;par(mfrow=c(npar,2))
+for(i in 1:npar){
+  plot(mcmc[,i],type='l',ylab=names(mcmc)[i])
+  hist(mcmc[keep,i],main='',xlab=names(mcmc)[i],freq=FALSE)
+  }
+```
+
+# Model 2: replacing parameters with space-varying processes
+
+## Inference setup
+
+We now consider a model where the flood probability varies in both space and time. This is simply achieved by replacing the spatially-constant parameters in the preceding model with spatially-varying processes:
+
+$$\forall s=1,...,N_S;\forall t=1,...,N_T: y_{s,t} \sim Bernoulli(\varphi_{s,t})$$
+$$\varphi_{s,t} = \frac{1}{1+e^{-(\lambda_{s,0}+\lambda_{s,1} x_t)}}$$
+$$\forall s=1,...,N_S: \lambda_{s,0} \sim N(\mu_0,\sigma_0)$$
+$$\forall s=1,...,N_S: \lambda_{s,1} \sim N(\mu_1,\sigma_1)$$
+
+## Defining objects
+
+The `dataset` object is first defined in a similar way as previously, except that the dimension index `iDim` needs to be specified to keep track of the site index associated wth each value. 
+
+```{r}
+dat <- dataset(Y=longDataset['flood'],X=longDataset['nino'],iDim=longDataset['space'])
+```
+
+The processes can be specified next. The first step is to define the space `dimension` object, used by both processes $\lambda_0$ and $\lambda_1$. Each process can then be specified by first defining `parameter` objects for the hyper-parameters and then calling the `process` function to specify the process' properties.
+
+```{r}
+# space dimension
+space <- dimension(name='space',coord=OZstations[c('lon','lat')],d=distance('Haversine'))
+# lambda0 process
+mu0 <- parameter(name='mu0',init=0) # hyper-mean
+s0 <- parameter(name='s0',init=0.1,priorDist='FlatPrior+') # hyper-standard-deviation
+lambda0 <- process(name='lambda0',dim=space,init=0,dist='Gaussian_IID',par=list(mu0,s0))
+# lambda1 process
+mu1 <- parameter(name='mu1',init=0) # hyper-mean
+s1 <- parameter(name='s1',init=0.1,priorDist='FlatPrior+') # hyper-standard-deviation
+lambda1 <- process(name='lambda1',dim=space,init=0,dist='Gaussian_IID',par=list(mu1,s1))
+```
+
+The `model` object can finally be defined. Note that there is no need to define any parameter in this model - it is all based on processes.
+
+```{r}
+mod <- model(dataset=dat,parentDist='Bernoulli',process=list(lambda0,lambda1),
+             formula='prob = 1/(1+exp(-1*(lambda0+lambda1*nino)))')
+```
+
+## Running STooDs and analysing its results
+
+The function `STooDs` performs MCMC sampling from the posterior distribution $p(\boldsymbol{\lambda_0},\mu_0,\sigma_0,\boldsymbol{\lambda_1},\mu_1,\sigma_1|\boldsymbol{y},\boldsymbol{x})$:
+
+```{r}
+STooDs(model=mod)
+```
+
+The resulting MCMC samples can then be read and analyzed. The figures below show the marginal posterior distributions of $\lambda_{s,0}$'s (boxplots) and their hyper-parameters (MCMC trace + histogram). The spatial variability displayed by the boxplots is rather weak, which is confirmed by the small hyper-standard-deviation $\sigma_0$. This suggests that using a spatially-constant parameter rather than a process would be a sensible option.
+
+```{r}
+mcmc <- read.table(file.path('STooDs_workspace','MCMC.txt'),header=T,sep=';')
+keep=seq(1000,NROW(mcmc),10)
+boxplot(mcmc[keep,1:nS],names=1:nS,xlab='Site',ylab='lambda0',outline=FALSE)
+```
+
+
+```{r}
+npar=2;par(mfrow=c(npar,2))
+for(i in 1:npar){
+  plot(mcmc[,nS+i],type='l',ylab=names(mcmc)[nS+i])
+  hist(mcmc[keep,nS+i],main='',xlab=names(mcmc)[nS+i],freq=FALSE)
+  }
+```
+
+The spatial variability for $\lambda_{s,1}$'s seem to be larger (figures below), suggesting that a spatially-varying process makes sense for the ENSO effect.
+ 
+```{r}
+boxplot(mcmc[keep,nS+2+(1:nS)],names=1:nS,xlab='Site',ylab='lambda1',outline=FALSE)
+```
+
+```{r}
+npar=2;par(mfrow=c(npar,2))
+for(i in 1:npar){
+  plot(mcmc[,nS+2+nS+i],type='l',ylab=names(mcmc)[nS+2+nS+i])
+  hist(mcmc[keep,nS+2+nS+i],main='',xlab=names(mcmc)[nS+2+nS+i],freq=FALSE)
+  }
+```
+
+
+# Model 3: space-varying ENSO effect only
+
+## Inference setup
+
+Given the observations made in the previous section, we finally opt for a model with a spatially-varying ENSO effect but a constant intercept:
+
+$$\forall s=1,...,N_S;\forall t=1,...,N_T: y_{s,t} \sim Bernoulli(\varphi_{s,t})$$
+$$\varphi_{s,t} = \frac{1}{1+e^{-(\theta_0+\lambda_{s,1} x_t)}}$$
+$$\forall s=1,...,N_S: \lambda_{s,1} \sim N(\mu_1,\sigma_1)$$
+
+## Defining objects
+
+The specification of STooDs objects is similar to the previous sections. In particular, the definition of the `model` object illustrates that a `formula` can mix parameters, processes and covariates to compute the parameter(s) of the parent distribution. This offers quite a lot of flexibility, hopefully enabling the use of a large variety of models. 
+
+```{r}
+# dataset, including predictand Y, covariate X and space index iDim
+dat <- dataset(Y=longDataset['flood'],X=longDataset['nino'],iDim=longDataset['space'])
+# theta0 parameter
+p0 <- parameter(name='p0',init=0) 
+# space dimension
+space <- dimension(name='space',coord=OZstations[c('lon','lat')],d=distance('Haversine'))
+# lambda1 process
+mu1 <- parameter(name='mu1',init=0) # hyper-mean
+s1 <- parameter(name='s1',init=0.1,priorDist='FlatPrior+') # hyper-standard-deviation
+lambda1 <- process(name='lambda1',dim=space,init=0,dist='Gaussian_IID',par=list(mu1,s1))
+# model
+mod <- model(dataset=dat,parentDist='Bernoulli',par=p0,process=lambda1,
+             formula='prob = 1/(1+exp(-1*(p0+lambda1*nino)))')
+```
+
+## Running STooDs and analysing its results
+
+The function `STooDs` performs MCMC sampling from the posterior distribution $p(\theta_0,\boldsymbol{\lambda_1},\mu_1,\sigma_1|\boldsymbol{y},\boldsymbol{x})$:
+
+```{r}
+STooDs(model=mod)
+```
+
+The resulting MCMC samples can then be read and analyzed, as illustrated below. 
+
+```{r}
+mcmc <- read.table(file.path('STooDs_workspace','MCMC.txt'),header=T,sep=';')
+keep=seq(1000,NROW(mcmc),10)
+par(mfrow=c(1,2))
+plot(mcmc[,1],type='l',ylab=names(mcmc)[1])
+hist(mcmc[keep,1],main='',xlab=names(mcmc)[1],freq=FALSE)
+```
+
+```{r}
+boxplot(mcmc[keep,1+(1:nS)],names=1:nS,xlab='Site',ylab='lambda1',outline=FALSE)
+```
+
+
+```{r}
+npar=2;par(mfrow=c(npar,2))
+for(i in 1:npar){
+  plot(mcmc[,1+nS+i],type='l',ylab=names(mcmc)[1+nS+i])
+  hist(mcmc[keep,1+nS+i],main='',xlab=names(mcmc)[1+nS+i],freq=FALSE)
+  }
+```
+
+# Conclusion and outlook
+
+We have now introduced the main STooDs ingredients (**covariates**, **dimensions**, **processes**, **formulas**) and illustrated how they can be used together to build flexible probabilistic models to describe the variability of data in various dimensions. The next case studies will focus on more specific aspects such as: spatial models, time series models, censored data, hidden covariates models, MCMC and other STooDs options, etc.

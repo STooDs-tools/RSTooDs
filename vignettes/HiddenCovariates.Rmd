@@ -1,0 +1,156 @@
+---
+title: "STooDs: Hidden Climate Index (HCI) approach"
+author: "Ben Renard"
+date: "24/09/2019"
+output: 
+  html_document: 
+    number_sections: yes
+    toc: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,results='hide')
+```
+
+# Preliminaries
+
+Load STooDs:
+
+```{r}
+# Define directories for STooDs.R and STooDs.exe  
+dir.R <- 'C:/BEN/FORGE/HydroStat/trunk/R/src'
+dir.exe <- 'C:/BEN/FORGE/HydroStat/branches/Ben/MECA/IVF_MECA/STooDs/Release'
+# Load STooDs.R
+wd <- getwd() # save current working directory
+setwd(dir.R);source('STooDs.R') # source
+setwd(wd) # come back to original working directory
+```
+
+# A Hidden Climate Index with a constant effect accross the region
+
+Dataset:
+
+```{r}
+require(tidyr)
+longDataset <- gather(springFlood,key='station',value='flood',-1)
+st <- longDataset$station
+st_indx <- as.integer(substr(st,8,nchar(st)))
+tim <- longDataset$year-min(longDataset$year)+1
+dat <- dataset(Y=longDataset['flood'],
+               iDim=data.frame(space=st_indx,time=tim))
+```
+
+Parameters:
+
+```{r}
+p0 <- parameter(name='p0',init=-1)
+HCI.effect <- parameter(name='HCI.effect',init=0)
+```
+
+Time dimension and associated process (HCI):
+
+```{r}
+time <- dimension(name='time',coord=springFlood['year'],d=distance('Euclidean'))
+HCI <- process(name='HCI',dim=time,constraint=2)
+```
+
+Model:
+
+```{r}
+mod <- model(dataset=dat,parentDist='Bernoulli',
+             process=list(HCI),par=list(p0,HCI.effect),
+             formula='prob = 1/(1+exp(-1*(p0+HCI.effect*HCI)))')
+```
+
+Run:
+
+```{r}
+workspace <- file.path(wd,'STooDs_workspace')
+STooDs(model=mod,workspace=workspace,dir.exe=dir.exe)
+```
+
+XXX
+```{r}
+mcmc <- read.table(file.path(workspace,'MCMC.txt'),header=T,sep=';')
+nT <- NROW(HCI$dim$coord)
+nS <- NROW(HCI.effect$dim$coord)
+npar=2;par(mfrow=c(npar,2))
+for(i in 1:npar){
+  plot(mcmc[,i],type='l',ylab=names(mcmc)[i])
+  hist(mcmc[500:NROW(mcmc),i],main='',xlab=names(mcmc)[i],freq=FALSE)
+}
+```
+
+```{r,fig.height=4,fig.width=10}
+band=apply(mcmc[500:NROW(mcmc),2+(1:nT)],2,quantile,c(0.025,0.5,0.975))
+plot(HCI$dim$coord$year,band[2,],xlab='Year',ylab='HCI',type='l',lwd=2,ylim=c(-3,3))
+lines(HCI$dim$coord$year,band[1,])
+lines(HCI$dim$coord$year,band[3,])
+```
+
+# HCI effects varying in space
+
+Space dimension and associated process (HCI effect):
+
+```{r}
+space <- dimension(name='space',coord=stations[c('lon','lat')],d=distance('Haversine'))
+hmean <- parameter(name='hmean',init=0)
+hsill <- parameter(name='hsill',init=0.1,priorDist='FlatPrior+')
+hsrange <- parameter(name='hrange',init=1.,priorDist='Exponential',priorPar=c(0,5))
+
+HCI.effect <- process(name='HCI.effect',dim=space,init=0,
+                       dist='Gaussian',
+                       par=list(hmean,hsill,hsrange),
+                       fMean='hmean',
+                       fCovar='(hsill^2)*exp(-Dspace/hrange)') 
+```
+
+
+```{r}
+mod <- model(dataset=dat,parentDist='Bernoulli',
+             process=list(HCI,HCI.effect),par=list(p0),
+             formula='prob = 1/(1+exp(-1*(p0+HCI.effect*HCI)))')
+```
+
+Run:
+
+```{r}
+STooDs(model=mod,workspace=workspace,dir.exe=dir.exe)
+```
+
+XXX
+```{r}
+mcmc <- read.table(file.path(workspace,'MCMC.txt'),header=T,sep=';')
+nT <- NROW(HCI$dim$coord)
+nS <- NROW(HCI.effect$dim$coord)
+npar=1;par(mfrow=c(npar,2))
+for(i in 1:npar){
+  plot(mcmc[,i],type='l',ylab=names(mcmc)[i])
+  hist(mcmc[500:NROW(mcmc),i],main='',xlab=names(mcmc)[i],freq=FALSE)
+}
+```
+
+```{r,fig.height=4,fig.width=10}
+band=apply(mcmc[500:NROW(mcmc),1+(1:nT)],2,quantile,c(0.025,0.5,0.975))
+plot(HCI$dim$coord$year,band[2,],xlab='Year',ylab='HCI',type='l',lwd=2,ylim=c(-3,3))
+lines(HCI$dim$coord$year,band[1,])
+lines(HCI$dim$coord$year,band[3,])
+```
+
+```{r,fig.height=4,fig.width=10}
+boxplot(x=mcmc[500:NROW(mcmc),1+nT+(1:nS)],names=1:nS,xlab='Station',ylab='HCI effect')
+```
+
+```{r}
+npar=3;par(mfrow=c(npar,2))
+for(i in 1+nT+nS+(1:npar)){
+  plot(mcmc[,i],type='l',ylab=names(mcmc)[i])
+  hist(mcmc[500:NROW(mcmc),i],main='',xlab=names(mcmc)[i],freq=FALSE)
+}
+```
+
+```{r}
+plot(mcmc[1000:NROW(mcmc),c(1,1+nT+nS+1)])
+```
+
+

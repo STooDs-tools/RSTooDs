@@ -1,0 +1,33 @@
+---
+title: "Index of Vignettes"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Index}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+The following vignettes provide a step-by-step introduction to STooDs. It is therefore recommended to read them in the following order:
+
+1. [Getting started](GettingStarted.html)
+2. [Using covariates](UsingCovariates.html)
+3. [Dimensions and processes](DimensionsAndProcesses.html)
+4. [Covariates, dimensions and processes](CovariatesDimensionsAndProcesses.html)
+
+Other vignettes discussing specific topics can be read in any order:
+
+* [Model specification examples](VariousModels.html)
+* [Hidden covariates models](HiddenCovariates.html)
+* [Handling mixed discrete-continuous variables](DiscreteContinousMixture.html) (e.g. occasional zero flows in intermittent rivers)
+* [Handling censored data](CensoredData.html), (e.g. imperfectly-known historical floods)
+* [Using spatial processes](SpatialProcesses.html)
+* And more to come!
+
+

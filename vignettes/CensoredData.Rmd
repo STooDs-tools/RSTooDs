@@ -1,0 +1,66 @@
+---
+title: "Historical Floods"
+author: "Ben Renard"
+date: "02/10/2019"
+output: 
+  html_document: 
+    number_sections: yes
+    toc: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,results='hide')
+```
+
+# Preliminaries
+
+Load STooDs:
+
+```{r}
+# Define directories for STooDs.R and STooDs.exe  
+dir.R <- 'C:/BEN/FORGE/HydroStat/trunk/R/src'
+dir.exe <- 'C:/BEN/FORGE/HydroStat/branches/Ben/MECA/IVF_MECA/STooDs/Release'
+# Load STooDs.R
+wd <- getwd() # save current working directory
+setwd(dir.R);source('STooDs.R') # source
+setwd(wd) # come back to original working directory
+```
+
+# Treatment of censored data
+
+## Selecting data
+```{r}
+dat <- dataset(Y=histoFloods_Anduze['Value'],
+               cType=histoFloods_Anduze['cType'],
+               cWidth=histoFloods_Anduze['cWidth'])
+```
+
+## Estimating a GEV distribution 
+
+Parameters:
+
+```{r}
+loc <- parameter(name='loc',init=1000) 
+scale <- parameter(name='scale',init=250) 
+shape <- parameter(name='shape',init=0) 
+```
+
+set Model and run!
+
+```{r,results='markup'}
+mod <- model(dataset=dat,parentDist='GEV',par=list(loc,scale,shape),
+             formula=c('loc = loc','scale = scale','shape=shape'))
+workspace <- file.path(wd,'STooDs_workspace')
+STooDs(model=mod,workspace=workspace,dir.exe=dir.exe)
+```
+
+XXX
+```{r}
+mcmc <- read.table(file.path(workspace,'MCMC.txt'),header=T,sep=';')
+npar=3;par(mfrow=c(npar,2))
+for(i in 1:npar){
+  plot(mcmc[,i],type='l',ylab=names(mcmc)[i])
+  hist(mcmc[500:NROW(mcmc),i],main='',xlab=names(mcmc)[i],freq=FALSE)
+}
+```
+

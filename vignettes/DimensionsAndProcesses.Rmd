@@ -1,0 +1,315 @@
+---
+title: "Dimensions and Processes"
+subtitle: "Illustration with flood occurrences at 42 Australian sites"
+author: "Ben Renard"
+date: "28/10/2019"
+output: 
+  html_document: 
+    number_sections: yes
+    toc: yes
+vignette: >
+  %\VignetteIndexEntry{Dimensions and Processes}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,results='hide')
+```
+
+# Introduction and aims
+This case study considers the case where the parameters of the distribution vary in a **dimension** such as space or time. It illustrates the use of **processes** in STooDs to describe the variability of data along such dimensions. As in the previous case study, we start by setting up the estimation of a common distribution for all data, then we illustrate how this setup can be modified to introduce variability along space or time.
+
+# Preliminaries
+
+Start by loading RSTooDs:
+
+```{r}
+library(RSTooDs)
+```
+
+We use the same dataset as in the previous case study (spring flood occurrences in East Australia, 1951-2014), but considering all 42 sites rather than one particular site. In the corresponding data frame `springFlood`, the first column is the year and each of the next 42 columns correspond to a station. The figure below illustrates this dataset by plotting the percentage of sites with a flood occurrence for each year. 
+
+```{r}
+n.occurrence <- apply(springFlood[,-1],1,sum,na.rm=T)
+n.available <- apply(!is.na(springFlood[,-1]),1,sum)
+plot(springFlood$year,100*n.occurrence/n.available,type='b',pch=19,xlab='Year',ylab='Sites with flood occurrence [%]')
+```
+
+STooDs does not accept data in such a "wide" rectangular format. Instead, it expects a "long" vector format, where the inference data are stored in a single column. This requires "unfolding" the $(64,42)$ occurrence data matrix into a $64 \times 42$ vector. The code below performs this unfolding; it also adds two columns to keep track of the site and the time step associated with each value. While not used here for the sake of simplicity, the package [tidyr](https://tidyr.tidyverse.org/) is very useful and efficient to perform such data manipulations.
+
+```{r}
+nT <- NROW(springFlood); nS <- NCOL(springFlood)-1
+longDataset <- data.frame(flood=integer(nT*nS),space=integer(nT*nS),time=integer(nT*nS))
+for(s in 1:nS){
+  indx=((s-1)*nT+1):(s*nT)
+  longDataset[indx,]=cbind(flood=springFlood[,s+1],space=rep(s,nT),time=1:nT)
+}
+```
+
+Here is a short extract of the "unfolded" data (rows 61 to 70)
+```{r,results='markup'}
+longDataset[61:70,]
+```
+
+# The *iid* case: estimating a common Bernoulli distribution for all sites and years
+
+## Inference setup
+
+We start with the strong assumption that data from all sites and all years are realizations from a unique Bernoulli distribution with probability of occurrence $\theta$:  
+$$\forall s=1,...,N_S;\forall t=1,...,N_T: y_{s,t} \sim Bernoulli(\theta)$$
+
+## Defining objects
+As in previous case studies, we define the `dataset` (containing the 0/1 data $\boldsymbol{y}$ in "long vector" format), the `parameter` to be estimated (the probability of occurrence $\theta$, with a uniform prior betwen 0 and 1), and the `model` (which gathers the estimation data, the assumed distribution and the parameter to be estimated):
+
+```{r}
+dat <- dataset(Y=longDataset['flood'])
+prob <- parameter(name='prob',init=0.5,priorDist='Uniform',priorPar=c(0,1)) 
+mod <- model(dataset=dat,parentDist='Bernoulli',par=prob)
+```
+
+## Running STooDs and analysing its results
+
+Once the model has been defined, the function `STooDs` can be called to perform MCMC sampling from the posterior distribution $p(\theta|\boldsymbol{y})$:
+
+```{r}
+STooDs(model=mod)
+```
+
+The resulting MCMC samples can then be read and analyzed. Here the probability of occurrence is estimated quite precisely, roughly between 0.19 and 0.22. This is to be compared with the previous single-site case study, where the same probability was estimated between 0.1 and 0.35. This increased precision is the result of using more data to estimate this parameter. However, it comes at the cost of making a strong assumption that this parameter changes neither in space nor in time. 
+
+```{r}
+mcmc <- read.table(file.path('STooDs_workspace','MCMC.txt'),header=T,sep=';')
+keep=seq(1000,NROW(mcmc),10)
+par(mfrow=c(1,2))
+plot(mcmc[,1],type='l',ylab=names(mcmc)[1])
+hist(mcmc[keep,1],main='',xlab=names(mcmc)[1],freq=FALSE)
+```
+
+# Making flood probability vary in space
+
+## Inference setup
+
+In order to evaluate whether the "constant probability" assumption is realistic, we now turn our attention to an alternative model where the probability of occurrence is site-specific (but remains constant in time):
+$$\forall s=1,...,N_S;\forall t=1,...,N_T: y_{s,t} \sim Bernoulli(\lambda_s)$$
+Such a parameter varying accross one of the dimension of the dataset is called a **process**. This section illustrates how to use them is STooDs.
+
+## Defining objects
+The first step is to define a `dimension` object to describe the space dimension along which the process varies, as shown below:
+
+1. `name` takes a character string identifying the dimension;
+2. `coord` takes a data frame containing the coordinates of the dimension. Here these are the geographical coordinates of the stations, given in the data frame `stations` (loaded together with `STooDs.R`).
+3. `d` takes a `distance` object defining the function used to compute distances between pairs of coordinates. Since coordinates are expressed as longitude/latitude here, we use the [Haversine](https://en.wikipedia.org/wiki/Haversine_formula) distance. The other available option is distance('Euclidean'). There are additional refinements with `distance` objects (e.g. the distance may depend on unknown parameters), but this is left for later.
+
+```{r}
+space <- dimension(name='space',coord=OZstations[c('lon','lat')],d=distance('Haversine'))
+```
+
+Once the `dimension` is defined, a `process` object can be attached to it as shown below (`init` is an initial guess):
+```{r}
+lambda <- process(name='lambda',dim=space,init=0.2) 
+```
+
+Compared with the *iid* case, the `dataset` object also needs to keep track of which site is associated with each value. This is specified through the argument `iDim` of the `dataset` function. This argument takes an integer-valued data frame of same size $n$ as $\boldsymbol{y}$ containing the dimension index (here, the site index between 1 and $N_S=42$). The column name(s) should be the same or at least contain the name of the associated dimension(s) (so that this data frame can be interpreted by STooDs when there are several dimensions).
+
+```{r}
+dat <- dataset(Y=longDataset['flood'],iDim=longDataset['space'])
+```
+
+The `model` object can finally be specified to gather the estimation data, the assumed distribution and the process to be estimated.
+
+```{r}
+mod <- model(dataset=dat,parentDist='Bernoulli',process=lambda)
+```
+
+## Running STooDs and analysing its results
+
+The function `STooDs` is called as usual to perform MCMC sampling from the posterior distribution $p(\boldsymbol{\lambda}|\boldsymbol{y})$. Note that there are 42 unknown values $\boldsymbol{\lambda}=(\lambda_1,\dots,\lambda_{N_S})$ to be estimated here:
+
+```{r}
+STooDs(model=mod)
+```
+
+The marginal posterior distribution of each value $\lambda_s$ can be represented as a boxplot. Overall there seems to be very little variability in the flood probability accross sites, so that assume a spatially-constant probability seems realistic. This lack of spatial variability is actually a consequence of the way flood occurrences have been defined (at each site, a flood is say to occur if it exceeds the locally-estimated 5-year spring flood).
+
+```{r}
+mcmc <- read.table(file.path('STooDs_workspace','MCMC.txt'),header=T,sep=';')
+boxplot(mcmc[keep,1:nS],names=1:nS,xlab='Station',ylab='Flood probability',outline=FALSE)
+```
+
+# Making flood probability vary in time 
+
+## Inference setup
+
+We now consider the "dual" model where the probability of occurrence is year-specific (but remain constant accross sites):
+$$\forall s=1,...,N_S;\forall t=1,...,N_T: y_{s,t} \sim Bernoulli(\lambda_t)$$
+
+## Defining objects
+
+The definition of `dimension`, `process`, `dataset` and `model` objects is very similar to the previous section. Note that for the "time" dimension, the year is used as a coordinate and the distance between years is the usual euclidean distance.
+
+```{r}
+time <- dimension(name='time',coord=springFlood['year'],d=distance('Euclidean'))
+lambda <- process(name='lambda',dim=time,init=0.2)
+dat <- dataset(Y=longDataset['flood'],iDim=longDataset['time'])
+mod <- model(dataset=dat,parentDist='Bernoulli',process=lambda)
+```
+
+## Running STooDs and analysing its results
+
+The function `STooDs` now performs MCMC sampling from the posterior distribution $p(\boldsymbol{\lambda}|\boldsymbol{y})$, where $\boldsymbol{\lambda}=(\lambda_1,\dots,\lambda_{N_T})$ are the 64 unknown probabilities of occurrence to be estimated:
+
+```{r}
+STooDs(model=mod)
+```
+
+Marginal posterior distributions of $\lambda_t$'s are shown below as boxplots. This time a clear temporal variability is discernible in flood probabilities. Note that boxplots for earlier years tend to be wider: this is due to the smaller number of available sites at the beginning of the period.
+
+```{r}
+mcmc1 <- read.table(file.path('STooDs_workspace','MCMC.txt'),header=T,sep=';')
+boxplot(mcmc1[keep,1:nT],names=springFlood$year,xlab='Year',ylab='Flood probability',outline=FALSE)
+```
+
+Where does this temporal variability come from? The previous case study suggests that El Niño might play a role here. As a quick evaluation, the figure below shows the flood probability boxplots positionned as a function of the Nino3.4 index. Overall, probabilities tend to be higher for negative Nino3.4 values (i.e. La Niña conditions) and smaller for positive Nino3.4 values (i.e. El Niño conditions). The boxplot positioned at Nino3.4 = 1.81 (corresponding to year 1972) seems to be at odds with this general tendency. We will get back in more depth to this  El Niño effect in the next case study.
+
+```{r}
+boxplot(mcmc1[keep,1:nT],xlab='Nino3.4',ylab='Flood probability',outline=FALSE,at=elNino$nino,names=round(elNino$nino,2),border='gray',col=rgb(0.5,0.5,0.5,0.5),boxwex=0.15,medcol=NA)
+```
+
+
+# Hierarchical modeling
+
+## Inference setup
+
+The models used so far did not put any constraint on the values taken by the process at different sites or time steps. For instance the previous model is equivalent to setting up a distinct Bernoulli model for each year, and estimating the correponding probabilities of occurrence separately for each year. Can't this be constrained a little bit more, without going as far as to assuming a constant flood probability for all years?
+
+One possible way to impose such a mild constraint is to assume that the values taken by the process are realizations from a common parent distribution, called the **hyper-distribution**. For instance we may assume that probabilities of occurrence are *iid* realizations from a common Gaussian distribution as follows:
+
+$$\forall s=1,...,N_S;\forall t=1,...,N_T: y_{s,t} \sim Bernoulli(\lambda_t)$$
+$$\forall t=1,...,N_T: \lambda_t \sim N(\mu,\sigma)$$
+The parameters $\mu$ and $\sigma$ of the Gaussian hyper-distribution are unknown and are called the **hyper-parameters**. Note that the limit case $\sigma \to 0$ corresponds to assuming a common probability of occurrence for all time step, i.e. the "strong constraint" case.
+
+Note that in addition to introducing a mild constraint, the hyper-distribution may be useful for predictive purposes: indeed, it may be used to represent the uncertainty in predicting the flood probability for an unobserved year.
+
+## Defining objects
+
+This hierarchical model can be implemented in STooDs by simply changing the `process` model as shown below:
+
+1. define `parameter` objects for each hyper-parameter (the hyper-mean $\mu$ and the hyper-standard-deviation $\sigma$);
+2. define the hyper-distribution through the argument `dist` of function `process` (here, "Gaussian_IID") and pass the list of hyper-parameters through the argument `par`.
+
+```{r}
+# Define hyperparameters: hypermean and hyper-standard-deviation
+hmean <- parameter(name='hmean',init=0.2) # default flat prior
+hsd <- parameter(name='hsd',init=0.1,priorDist='FlatPrior+')
+# Define process
+lambda <- process(name='lambda',dim=time,init=0.2,dist='Gaussian_IID',par=list(hmean,hsd))
+```
+
+The list of available hyper-distributions can be obtained as shown below. The usage of these hyper-distributions will be illustrated in future case studies.
+
+```{r,results='markup'}
+getCatalogue()$mvtdistribution
+```
+
+The `model` object can then be specified as previously:
+
+```{r}
+mod <- model(dataset=dat,parentDist='Bernoulli',process=lambda)
+```
+
+## Running STooDs and analysing its results
+
+The function `STooDs` performs MCMC sampling from the posterior distribution $p(\boldsymbol{\lambda},\mu,\sigma|\boldsymbol{y})$ (note the inclusion of the unknown hyper-parameters):
+
+```{r}
+STooDs(model=mod)
+```
+
+Let's take a look at the content of the resulting MCMC file:
+
+```{r,results='markup'}
+mcmc2 <- read.table(file.path('STooDs_workspace','MCMC.txt'),header=T,sep=';')
+names(mcmc2)
+```
+
+The first 64 columns correspond to the values taken by the process at each time step; the next 2 columns correspond to the hyper-parameters; the final 4 columns give the unnormalized posterior pdf and its 3 components (in log space) as described below:
+
+$$\underbrace{p(\boldsymbol{\lambda},\mu,\sigma|\boldsymbol{y})}_\text{posterior} \propto \underbrace{p(\boldsymbol{y}|\boldsymbol{\lambda})}_\text{likelihood} \underbrace{p(\boldsymbol{\lambda}|\mu,\sigma)}_\text{H} \underbrace{p(\mu,\sigma)}_\text{prior}$$
+
+We start by visualizing the MCMC traces and marginal posterior distributions for the hyper-parameters. On average, the flood probability is around 0.22, but it may vary from year to year with a standard deviation of around 0.17. Note that one can legitimately cast doubt on the use of a Gaussian hyper-distribution at this point, since negative values are possible with a non-negligible probability with a $N(0.22,0.17)$: we will get back to this issue shortly.
+
+```{r}
+npar=2;par(mfrow=c(npar,2))
+for(i in 1:npar){
+  plot(mcmc2[,nT+i],type='l',ylab=names(mcmc2)[nT+i])
+  hist(mcmc2[keep,nT+i],main='',xlab=names(mcmc2)[nT+i],freq=FALSE)
+  }
+```
+
+Marginal posterior distributions of $\lambda_t$'s are shown below as red boxplots. The gray boxplots correspond to the previous model with no hyper-distribution constraint for comparison purposes. Results display a similar temporal variability, but the constraint induced by the Gaussian hyper-distribution tends to bring the highest probabilities down. This might be an undesirable behavior given the doubts raised previously on this Gaussian hyper-distribution. 
+
+```{r}
+boxplot(mcmc1[keep,1:nT],names=springFlood$year,xlab='Year',ylab='Flood probability',outline=FALSE,border='gray',col='gray',medcol=NA)
+boxplot(mcmc2[keep,1:nT],names=springFlood$year,xlab='Year',ylab='Flood probability',outline=FALSE,border='red',col=rgb(1,0,0,0.3),medcol=NA,add=TRUE)
+```
+
+## Improving the model
+
+The basic issue is to use a Gaussian distribution to model a probability that is constrained between zero and one. The easiest way around it is to define a transformation between the parameter of the parent distribution and the process to be inferred. As in the previous case study, an inverse-logit transformation is a natural choice:  
+
+$$\forall s=1,...,N_S;\forall t=1,...,N_T: y_{s,t} \sim Bernoulli \left( \varphi_t \right)$$
+$$\varphi_t = \frac{1}{1+e^{-\lambda_t}}$$
+$$\forall t=1,...,N_T: \lambda_t \sim N(\mu,\sigma)$$
+
+This transformation can be specified in STooDs by using the `formula` argument when creating the `model` object. It is exactly the same approach as the one used in the previous "covariates" case study, except that a process is used in the right hand side of the formula rather than a covariate:
+
+```{r}
+# Define hyperparameters: hypermean and hyper-standard-deviation
+hmean <- parameter(name='hmean',init=0) # default flat prior
+hsd <- parameter(name='hsd',init=0.1,priorDist='FlatPrior+')
+# Define process
+lambda <- process(name='lambda',dim=time,init=0,dist='Gaussian_IID',par=list(hmean,hsd))
+# define model with a formula to introduce the inverse-logit transformation
+mod <- model(dataset=dat,parentDist='Bernoulli',process=lambda,formula='prob = 1/(1+exp(-lambda))')
+```
+
+As previously, the function `STooDs` performs MCMC sampling from the posterior distribution $p(\boldsymbol{\lambda},\mu,\sigma|\boldsymbol{y})$:
+
+```{r}
+STooDs(model=mod)
+```
+
+MCMC traces and marginal posterior distributions of the hyper-parameters are shown below. Note that the hyper-distribution applies to logit-transformed probabilities in this model, hence the negative hyper-mean $\mu$.
+
+```{r}
+mcmc3 <- read.table(file.path('STooDs_workspace','MCMC.txt'),header=T,sep=';')
+npar=2;par(mfrow=c(npar,2))
+for(i in 1:npar){
+  plot(mcmc3[,nT+i],type='l',ylab=names(mcmc3)[nT+i])
+  hist(mcmc3[keep,nT+i],main='',xlab=names(mcmc3)[nT+i],freq=FALSE)
+  }
+```
+
+Marginal posterior distributions of $\lambda_t$'s are shown below. As previously, remind that $\lambda_t$'s represent probabilities in logit space.
+
+```{r}
+boxplot(mcmc3[keep,1:nT],names=springFlood$year,xlab='Year',ylab='Flood probability (logit space)',outline=FALSE)
+```
+
+This figure can be transformed back into usual probability space by applying the inverse-logit transformation $1/(1+e^{-\lambda_t})$ to MCMC samples:
+
+```{r}
+boxplot(1/(1+exp(-1*mcmc3[keep,1:nT])),names=springFlood$year,xlab='Year',ylab='Flood probability ',outline=FALSE)
+```
+
+These probabilities (in red in the figure below) can be compared with the one obtained with the no-hyper-distribution model (in gray). The main effect of the hyper-distribution constraint is to reduce the width of the boxplots, especially for earlier years where only few stations were available.
+
+```{r}
+boxplot(mcmc1[keep,1:nT],names=springFlood$year,xlab='Year',ylab='Flood probability',outline=FALSE,border='gray',col='gray',medcol=NA)
+boxplot(1/(1+exp(-1*mcmc3[keep,1:nT])),names=springFlood$year,xlab='Year',ylab='Flood probability',outline=FALSE,border='red',col=rgb(1,0,0,0.3),medcol=NA,add=TRUE)
+```
+
+# Conclusion and outlook
+
+This case study focused on the use of **processes** in STooDs to describe the variability of data along space and time **dimensions**. Admittedly, it only scratched the surface of what can be done with such processes. Future case studies will investigate them in more depth: using advanced non-*iid* spatial or time series model, considering dimensions other than space and time (e.g. duration, area), etc. But before such a deeper dive into processes, the next case study illustrates how to bring **processes** and **covariates** together to build flexible models.
