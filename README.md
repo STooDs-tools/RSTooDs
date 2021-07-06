@@ -1,2 +1,199 @@
-# RSTooDs
-An R user interface to STooDs
+RSTooDs
+================
+
+# Introduction
+
+STooDs is a framework to build and estimate probabilistic models for
+data varying in Space, Time or other Dimensions. The R package `RSTooDs`
+is built as an R User Interface to the [computational STooDs
+engine](https://github.com/STooDs-tools/STooDs). It defines classes
+(objects’ properties and methods) for the various building blocks of a
+STooDs case study. Its typical usage is as follows:
+
+1.  Assemble the dataset.
+2.  Define the probabilistic model and its constitutive objects
+    (parameters, dimensions, processes).
+3.  Perform Bayesian-MCMC inference.
+4.  Read, analyse and use MCMC samples.
+
+<!-- end list -->
+
+``` r
+library(RSTooDs)
+```
+
+# A simple example
+
+River streamflow in Eastern Australia is influenced by the [El Niño
+Southern
+Oscillation](https://en.wikipedia.org/wiki/El_Niño-Southern_Oscillation),
+as explained in this [blog post](https://globxblog.inrae.fr/el-ninoz/).
+As an illustration, let’s consider data from the Barnard River in New
+South Wales, Australia. The figures below show the average streamflow
+during the austral spring (September to November), and indeed it seems
+that negative values of the [nino3.4
+index](https://psl.noaa.gov/gcos_wgsp/Timeseries/Nino34/), corresponding
+to [La Niña episodes](https://en.wikipedia.org/wiki/La_Niña), are
+associated with large
+streamflow.
+
+``` r
+dat=read.table(file.path('man','readme','BarnardRiverStreamflow.txt'),header=TRUE)
+par(mfrow=c(2,1))
+plot(dat$year,dat$streamflow,type='b',pch=19,xlab='Year',ylab='Streamflow (m3/s)',main='Time series')
+plot(dat$nino,dat$streamflow,type='p',pch=19,xlab='Nino index',ylab='Streamflow (m3/s)',main='Association with Nino3.4 index')
+```
+
+![](man/readme/README-unnamed-chunk-2-1.png)<!-- -->
+
+A probabilistic model can be used to quantify the association between
+river streamflow and the nino index. For instance one could assume that
+observed streamflow values are realizations from a log-normal
+distribution whose first parameter (mu) varies as a function of the nino
+index. The few lines of codes below show how this can be specified with
+`RSTooDs`.
+
+``` r
+# Assemble the dataset with predictand Y and predictor X (aka covariate).
+D=dataset(Y=dat['streamflow'],X=dat['nino'])
+# Define formulas of the model
+f=c('mu=m0+m1*nino','sigma=s0')
+# Define parameters of the model and their prior distributions
+m0=parameter('m0',init=1) # Improper flat prior by default
+m1=parameter('m1',init=0,priorDist='Gaussian',priorPar=c(0,1))
+s0=parameter('s0',init=1,priorDist='FlatPrior+')
+# Assemble the model - type getCatalogue() for a list of available distributions.
+mod=model(dataset=D,parentDist='LogNormal',par=list(m0,m1,s0),formula=f)
+```
+
+Once the model is specified, the function `STooDs` can be called to
+perform MCMC sampling. It is recommended to first define a `workspace`
+folder where configuration and result files will be written.
+
+``` r
+wk=file.path(getwd(),'man','readme','wk')
+STooDs(model=mod,workspace=wk)
+```
+
+MCMC samples can then be explored as illustrated below. Traces in orange
+correspond to the parameters, traces in blue correspond to the standard
+Bayesian inference functions (all in log space): prior, likelihood,
+hierarchical component (not used here) and posterior.
+
+``` r
+mcmc=readMCMC(file=file.path(wk,'MCMC.txt'))
+plotMCMC.trace(mcmc,mod,panelPerCol=4)
+```
+
+![](man/readme/README-unnamed-chunk-5-1.png)<!-- -->
+
+The function below plots histograms of all parameters. The parameter m1
+appears to be largely negative, corresponding to the observed negative
+association between streamflow and the nino index.
+
+``` r
+plotMCMC.par(mcmc,mod)
+```
+
+![](man/readme/README-unnamed-chunk-6-1.png)<!-- -->
+
+# A more complex example using spatial processes
+
+It is legitimate to ask whether the effect of El Nino would be the same,
+or would at least be similar, for nearby rivers. The data shown below
+correspond to 21 stations located in New South Wales and Queensland
+(source: [Bureau of Meteorology](http://www.bom.gov.au/water/hrs/)) and
+can be used to investigate this
+question.
+
+``` r
+dat=read.table(file.path('man','readme','21RiversStreamflow.txt'),header=TRUE)
+stations=read.table(file.path('man','readme','21Rivers.txt'),header=TRUE)
+par(mfrow=c(2,1))
+plot(dat$year,dat$streamflow,type='p',pch=19,col=dat$space_index,xlab='Year',ylab='Streamflow (m3/s)',log='y',main='Time series')
+plot(dat$nino,dat$streamflow,type='p',pch=19,col=dat$space_index,xlab='Nino index',ylab='Streamflow (m3/s)',log='y',main='Association with Nino3.4 index')
+```
+
+![](man/readme/README-unnamed-chunk-7-1.png)<!-- -->
+
+We are going to use a model similar to the previous one: observed
+streamflows are realizations from a log-normal distribution whose first
+parameter (mu) varies in time as a function of the nino index. However,
+since data are now varying in space as well, it is necessary to modify
+the model so that parameters may also vary in space. This can be
+achieved by first defining a space `dimension`, and then by attaching
+`processes` to it. In a nutshell, a process can hence be viewed as a
+parameter that varies along a given
+dimension.
+
+``` r
+# Assemble the dataset. Note the use of iDim (dimension index) to keep track of the site associated with each row.
+D=dataset(Y=dat['streamflow'],X=dat['nino'],iDim=dat['space_index'])
+# Define formulas of the model - same as previously, but now some parameters will vary in space and hence be treated as processes
+f=c('mu=m0+m1*nino','sigma=s0')
+# Create a 'space' dimension, with lon-lat coordinates and the corresponding Haversine distance
+space=dimension('space',coord=stations[c('lon','lat')],d=distance('Haversine'))
+# m0 is a "free" spatial process - no hyperdistribution
+m0=process('m0',dim=space,init=1) # no hyper-distribution by default
+# m0 is a Gaussian iid spatial process
+m1=process('m1',dim=space,init=0,dist='Gaussian_IID',
+           par=list(parameter(name='m1_hypermean',init=0),
+                    parameter(name='m1_hypersdev',init=1)))
+# s0 is a parameter => it is assumed to be the same for all sites.
+s0=parameter('s0',init=1,priorDist='FlatPrior+')
+# Assemble the model - note the distinction between parameters and processes
+mod=model(dataset=D,parentDist='LogNormal',par=list(s0),process=list(m0,m1),formula=f)
+```
+
+As previously, the function `STooDs` is called to perform MCMC sampling.
+
+``` r
+wk=file.path(getwd(),'man','readme','wk')
+STooDs(model=mod,workspace=wk)
+```
+
+MCMC traces are shown below. Note that the processes appear in light
+green, and their hyper-parameters in dark green.
+
+``` r
+mcmc=readMCMC(file=file.path(wk,'MCMC.txt'))
+plotMCMC.trace(mcmc,mod,panelPerCol=4)
+```
+
+![](man/readme/README-unnamed-chunk-10-1.png)<!-- -->
+
+The function `plotMCMC.par` now plots histograms for parameters and
+hyper-parameters.
+
+``` r
+plotMCMC.par(mcmc,mod)
+```
+
+![](man/readme/README-unnamed-chunk-11-1.png)<!-- -->
+
+The function `plotMCMC.process` can be used to see how the processes
+vary across the dimension (here, the sites). Values for the nino effect
+m1 are largely negative at all sites, confirming that El Nino has a
+consistent negative effect across this region.
+
+``` r
+plotMCMC.process(mcmc,mod)
+```
+
+![](man/readme/README-unnamed-chunk-12-1.png)<!-- -->
+
+# Going further
+
+This README provides a very quick overview of the basic usage of the
+`RSTooDs` package. For more advanced usages, please consult the
+documentation of the functions and the vignettes of the package. In
+particular, the following capabilities of `RSTooDs` are potentially
+useful:
+
+1.  The use of several random variables.
+2.  The handling of censored data.
+3.  The use of non-iid spatial or temporal processes.
+4.  The use of nearest-neighbour processes for large datasets.
+5.  The use of identifiability constraints for ‘hidden covariates’
+    models (aka ‘latent variables’ or ‘latent factors’ models).
+6.  etc.
