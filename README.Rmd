@@ -9,6 +9,8 @@ knitr::opts_chunk$set(echo=TRUE,results='hide',
                       fig.path = "man/readme/README-")
 ```
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.5075760.svg)](https://doi.org/10.5281/zenodo.5075760)
+
 # Introduction
 
 STooDs is a framework to build and estimate probabilistic models for data varying in Space, Time or other Dimensions. The R package `RSTooDs` is built as an R User Interface to the [computational STooDs engine](https://github.com/STooDs-tools/STooDs). It defines classes (objects' properties and methods) for the various building blocks of a STooDs case study. Its typical usage is as follows:

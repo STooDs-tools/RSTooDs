@@ -1,6 +1,8 @@
 RSTooDs
 ================
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.5075760.svg)](https://doi.org/10.5281/zenodo.5075760)
+
 # Introduction
 
 STooDs is a framework to build and estimate probabilistic models for
