@@ -4,7 +4,7 @@ Title: Models for Data Varying in Space, Time or other Dimensions
 Version: 0.1.0
 Authors@R: person("Benjamin", "Renard", email = "benjamin.renard@irstea.fr",
     role = c("aut", "cre"))
-Description: STooDs is a framework to build and estimate probabilitic models
+Description: STooDs is a framework to build and estimate probabilistic models
     for data varying in Space, Time or other Dimensions. This R package is 
     built as an R User Interface (RUI) to the computational STooDs engine, 
     which is a FORTRAN executable piloted by text configuration files.
