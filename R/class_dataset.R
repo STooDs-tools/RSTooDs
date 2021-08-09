@@ -27,7 +27,7 @@
 #'              iDim=data.frame(time=1:50))
 #' @export
 dataset<-function(Y,
-                  var=data.frame(varName=rep(names(as.data.frame(Y))[1],NROW(Y))),
+                  var=data.frame(varName=factor(rep(names(as.data.frame(Y))[1],NROW(Y)))),
                   X=NULL,iDim=NULL,cType=rep(0,NROW(Y)),cWidth=rep(0,NROW(Y)),
                   name='STooDs_dataset',file=NULL){
   # Convert inputs into data frames

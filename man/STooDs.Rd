@@ -7,7 +7,7 @@
 STooDs(
   model,
   workspace = file.path(getwd(), "STooDs_workspace"),
-  dir.exe = file.path(path.package("STooDs"), "bin"),
+  dir.exe = file.path(path.package("RSTooDs"), "bin"),
   name.exe = "STooDs",
   run = TRUE,
   mcmcOptions = mcmc()
