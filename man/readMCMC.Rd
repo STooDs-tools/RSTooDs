@@ -19,7 +19,7 @@ readMCMC(
 \arguments{
 \item{file}{Character, full path to MCMC file.}
 
-\item{burnFactor}{Numeric, burn factor. 0.1 means the first 10% iterations
+\item{burnFactor}{Numeric, burn factor. 0.1 means the first 10 percent iterations
 are discarded.}
 
 \item{slimFactor}{Integer, slim factor. 10 means that only one iteration

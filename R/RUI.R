@@ -78,7 +78,7 @@ STooDs <- function(model,
 #' Read raw MCMC samples, return cooked (burnt & sliced) ones
 #'
 #' @param file Character, full path to MCMC file.
-#' @param burnFactor Numeric, burn factor. 0.1 means the first 10% iterations
+#' @param burnFactor Numeric, burn factor. 0.1 means the first 10 percent iterations
 #'    are discarded.
 #' @param slimFactor Integer, slim factor. 10 means that only one iteration
 #'    every 10 is kept.
