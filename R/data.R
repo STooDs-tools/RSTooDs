@@ -64,3 +64,20 @@
 #' }
 #' @source \url{https://www.esrl.noaa.gov/psd/gcos_wgsp/Timeseries/Data/nino34.long.data}
 "elNino"
+
+#' Information on available distributions
+#'
+#' A named list containing information (parameters, contraints, notes, warnings, etc.)
+#' for all available univariate distributions.
+#'
+#' @format A named list where each element is itself a list containing:
+#' \describe{
+#'   \item{parName}{parameters short names}
+#'   \item{parLongName}{parameters long names}
+#'   \item{parSymbol}{parameters typical symbols}
+#'   \item{constraints}{constraints on parameters}
+#'   \item{url}{link to more information}
+#'   \item{note}{notes}
+#'   \item{warning}{warnings: read carefully since this highlights in particular differences with "standard" parameterizations found in e.g. Wikipedia or R.}
+#' }
+"distInfo"

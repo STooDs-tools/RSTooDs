@@ -24,6 +24,17 @@ STooDs is a framework to build and estimate probabilistic models for data varyin
 library(RSTooDs)
 ```
 
+**Important warning**: many distributions are available in `RSTooDs`, but for some of them the parameterization may differ from the one used in e.g. Wikipedia or other R packages. The dataset `distInfo` provides information on the distributions *as they are used in* `RSTooDs`: it is highly advised to read this information before using a distribution. Try the following:
+
+```{r,results=FALSE,message=FALSE}
+# Show available distributions
+names(distInfo)
+# Show information on e.g. the Generalized Extreme Value (GEV) distribution
+distInfo[['GEV']]
+# Show all existing warnings
+showWarnings()
+```
+
 # A simple example
 
 River streamflow in Eastern Australia is influenced by the [El Niño Southern Oscillation](https://en.wikipedia.org/wiki/El_Niño-Southern_Oscillation), as explained in this [blog post](https://globxblog.inrae.fr/el-ninoz/). As an illustration, let's consider data from the Barnard River in New South Wales, Australia. The figures below show the average streamflow during the austral spring (September to November), and indeed it seems that negative values of the [nino3.4 index](https://psl.noaa.gov/gcos_wgsp/Timeseries/Nino34/), corresponding to [La Niña episodes](https://en.wikipedia.org/wiki/La_Niña), are associated with large streamflow.

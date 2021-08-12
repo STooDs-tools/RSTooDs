@@ -389,11 +389,7 @@ violinPlot <- function(sim,ylab='values',col='black'){
 #' @export
 getCatalogue<-function(printOnly=FALSE){
   # available distributions
-  dist=c('Gaussian','Uniform','Triangle','LogNormal','LogNormal3',
-         'Exponential','GPD','Gumbel','GEV','GEV_min','Inverse_Chi2','PearsonIII',
-         'Beta','Kumaraswamy',
-         'Geometric','Poisson','Bernoulli','Binomial','NegBinomial',
-         'FlatPrior','FlatPrior+','FlatPrior-','FIX')
+  dist=names(distInfo)
   # available multivariate distributions
   mvtdist=c('Gaussian','Gaussian_IID','Gaussian_AR1','Gaussian_AR1_vmean','NNGP','Uniform','Flat')
   # available dstances
@@ -424,34 +420,27 @@ getCatalogue<-function(printOnly=FALSE){
 getParNames<-function(d){
   names=c()
   for(i in 1:length(d)){
-    name=switch(d[i],
-                'Gaussian'=c('mean','sd'),
-                'Uniform'=c('lowBound','highBound'),
-                'Triangle'=c('peak','lowBound','highBound'),
-                'LogNormal'=c('meanlog','sdlog'),
-                'LogNormal3'=c('threshold','meanlogexcess','sdlogexcess'),
-                'Exponential'=c('threshold','scale'),
-                'GPD'=c('threshold','scale','shape'),
-                'Gumbel'=c('location','scale'),
-                'GEV'=c('location','scale','shape'),
-                'GEV_min'=c('location','scale','shape'),
-                'Inverse_Chi2'=c('dof','scale'),
-                'PearsonIII'=c('location','scale','shape'),
-                'Beta'=c('shape1','shape2'),
-                'Kumaraswamy'=c('shape1','shape2'),
-                'Geometric'=c('prob'),
-                'Poisson'=c('rate'),
-                'Bernoulli'=c('prob'),
-                'Binomial'=c('prob','ntrials'),
-                'NegBinomial'=c('prob','nfails'),
-                'FlatPrior'=c(),
-                'FlatPrior+'=c(),
-                'FlatPrior-'=c(),
-                'FIX'=c(),
-                NA)
+    name=distInfo[[d[i]]]$parName
     names=c(names,name)
   }
   return(names)
+}
+
+#*******************************************************************************
+#' Warnings
+#'
+#' Show all distribution warnings
+#'
+#' @examples
+#' showWarnings()
+#' @export
+showWarnings<-function(){
+  for(i in 1:length(distInfo)){
+    if(!is.null(distInfo[[i]]$warning)){
+      message(names(distInfo)[[i]])
+      print(distInfo[[i]]$warning)
+    }
+  }
 }
 
 #***************************************************************************----

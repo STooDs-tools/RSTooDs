@@ -24,6 +24,22 @@ STooDs case study. Its typical usage is as follows:
 library(RSTooDs)
 ```
 
+**Important warning**: many distributions are available in `RSTooDs`,
+but for some of them the parameterization may differ from the one used
+in e.g. Wikipedia or other R packages. The dataset `distInfo` provides
+information on the distributions *as they are used in* `RSTooDs`: it is
+highly advised to read this information before using a distribution. Try
+the following:
+
+``` r
+# Show available distributions
+names(distInfo)
+# Show information on e.g. the Generalized Extreme Value (GEV) distribution
+distInfo[['GEV']]
+# Show all existing warnings
+showWarnings()
+```
+
 # A simple example
 
 River streamflow in Eastern Australia is influenced by the [El Niño
@@ -46,7 +62,7 @@ plot(dat$year,dat$streamflow,type='b',pch=19,xlab='Year',ylab='Streamflow (m3/s)
 plot(dat$nino,dat$streamflow,type='p',pch=19,xlab='Nino index',ylab='Streamflow (m3/s)',main='Association with Nino3.4 index')
 ```
 
-![](man/readme/README-unnamed-chunk-2-1.png)<!-- -->
+![](man/readme/README-unnamed-chunk-3-1.png)<!-- -->
 
 A probabilistic model can be used to quantify the association between
 river streamflow and the nino index. For instance one could assume that
@@ -87,7 +103,7 @@ mcmc=readMCMC(file=file.path(wk,'MCMC.txt'))
 plotMCMC.trace(mcmc,mod,panelPerCol=4)
 ```
 
-![](man/readme/README-unnamed-chunk-5-1.png)<!-- -->
+![](man/readme/README-unnamed-chunk-6-1.png)<!-- -->
 
 The function below plots histograms of all parameters. The parameter m1
 appears to be largely negative, corresponding to the observed negative
@@ -97,7 +113,7 @@ association between streamflow and the nino index.
 plotMCMC.par(mcmc,mod)
 ```
 
-![](man/readme/README-unnamed-chunk-6-1.png)<!-- -->
+![](man/readme/README-unnamed-chunk-7-1.png)<!-- -->
 
 # A more complex example using spatial processes
 
@@ -116,7 +132,7 @@ plot(dat$year,dat$streamflow,type='p',pch=19,col=dat$space_index,xlab='Year',yla
 plot(dat$nino,dat$streamflow,type='p',pch=19,col=dat$space_index,xlab='Nino index',ylab='Streamflow (m3/s)',log='y',main='Association with Nino3.4 index')
 ```
 
-![](man/readme/README-unnamed-chunk-7-1.png)<!-- -->
+![](man/readme/README-unnamed-chunk-8-1.png)<!-- -->
 
 We are going to use a model similar to the previous one: observed
 streamflows are realizations from a log-normal distribution whose first
@@ -162,7 +178,7 @@ mcmc=readMCMC(file=file.path(wk,'MCMC.txt'))
 plotMCMC.trace(mcmc,mod,panelPerCol=4)
 ```
 
-![](man/readme/README-unnamed-chunk-10-1.png)<!-- -->
+![](man/readme/README-unnamed-chunk-11-1.png)<!-- -->
 
 The function `plotMCMC.par` now plots histograms for parameters and
 hyper-parameters.
@@ -171,7 +187,7 @@ hyper-parameters.
 plotMCMC.par(mcmc,mod)
 ```
 
-![](man/readme/README-unnamed-chunk-11-1.png)<!-- -->
+![](man/readme/README-unnamed-chunk-12-1.png)<!-- -->
 
 The function `plotMCMC.process` can be used to see how the processes
 vary across the dimension (here, the sites). Values for the nino effect
@@ -182,7 +198,7 @@ consistent negative effect across this region.
 plotMCMC.process(mcmc,mod)
 ```
 
-![](man/readme/README-unnamed-chunk-12-1.png)<!-- -->
+![](man/readme/README-unnamed-chunk-13-1.png)<!-- -->
 
 # Going further
 
