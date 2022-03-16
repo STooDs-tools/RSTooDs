@@ -18,6 +18,8 @@ toString_engine<-function(val,comment,addQuote=T){
     if(is.null(comment[i])){
       txt[i]=paste(foo,collapse=',')
     } else {
+      # format foo to string with no scientific notation
+      foo=format(foo,scientific=FALSE,trim=TRUE)
       # collapse foo
       foo=paste(foo,collapse=',')
       # add trailing white spaces
