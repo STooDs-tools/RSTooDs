@@ -94,7 +94,11 @@ readMCMC <- function(file='MCMC.txt',burnFactor=0.1,slimFactor=10,sep=';',
                      reportFile=NULL,model=NULL,
                      panelPerCol=10,panelHeight=3,panelWidth=23/panelPerCol){
   # read file
-  raw <- utils::read.table(file,header=T,sep=sep)
+  raw <- utils::read.table(file,header=T,sep=sep,fill=T)
+  # remove buggy rows
+  delRow <- which(apply(is.na(raw),1,sum)>0)
+  if(length(delRow)>0){raw=raw[-delRow,]}
+  # cook
   n <- NROW(raw);p <- NCOL(raw)
   keep <- seq(max(floor(n*burnFactor),1),n,slimFactor)
   cooked <- raw[keep,]
