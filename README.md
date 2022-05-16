@@ -21,8 +21,14 @@ STooDs case study. Its typical usage is as follows:
 <!-- end list -->
 
 ``` r
+# devtools::install_github('STooDs-tools/RSTooDs') # First use: install the package from GitHub
 library(RSTooDs)
 ```
+
+    ## Registered S3 methods overwritten by 'tibble':
+    ##   method     from  
+    ##   format.tbl pillar
+    ##   print.tbl  pillar
 
 **Important warning**: many distributions are available in `RSTooDs`,
 but for some of them the parameterization may differ from the one used
@@ -52,8 +58,7 @@ during the austral spring (September to November), and indeed it seems
 that negative values of the [nino3.4
 index](https://psl.noaa.gov/gcos_wgsp/Timeseries/Nino34/), corresponding
 to [La Niña episodes](https://en.wikipedia.org/wiki/La_Niña), are
-associated with large
-streamflow.
+associated with large streamflow.
 
 ``` r
 dat=read.table(file.path('man','readme','BarnardRiverStreamflow.txt'),header=TRUE)
@@ -121,8 +126,7 @@ It is legitimate to ask whether the effect of El Nino would be the same,
 or would at least be similar, for nearby rivers. The data shown below
 correspond to 21 stations located in New South Wales and Queensland
 (source: [Bureau of Meteorology](http://www.bom.gov.au/water/hrs/)) and
-can be used to investigate this
-question.
+can be used to investigate this question.
 
 ``` r
 dat=read.table(file.path('man','readme','21RiversStreamflow.txt'),header=TRUE)
@@ -141,8 +145,7 @@ since data are now varying in space as well, it is necessary to modify
 the model so that parameters may also vary in space. This can be
 achieved by first defining a space `dimension`, and then by attaching
 `processes` to it. In a nutshell, a process can hence be viewed as a
-parameter that varies along a given
-dimension.
+parameter that varies along a given dimension.
 
 ``` r
 # Assemble the dataset. Note the use of iDim (dimension index) to keep track of the site associated with each row.

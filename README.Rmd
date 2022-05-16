@@ -21,6 +21,7 @@ STooDs is a framework to build and estimate probabilistic models for data varyin
 4. Read, analyse and use MCMC samples.
 
 ```{r}
+# devtools::install_github('STooDs-tools/RSTooDs') # First use: install the package from GitHub
 library(RSTooDs)
 ```
 
