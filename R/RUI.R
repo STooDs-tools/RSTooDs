@@ -395,8 +395,9 @@ getCatalogue<-function(printOnly=FALSE){
   # available distributions
   dist=names(distInfo)
   # available multivariate distributions
-  mvtdist=c('Gaussian','Gaussian_IID','Gaussian_AR1','Gaussian_AR1_vmean','NNGP','Uniform','Flat')
-  # available dstances
+  mvtdist=c('Gaussian','Gaussian_IID','Gaussian_AR1','Gaussian_AR1_vmean','NNGP',
+            'Uniform','Uniform_IID','Flat')
+  # available distances
   distance=c('Euclidean','Haversine')
   if(printOnly){
     message('DISTRIBUTIONS:')
