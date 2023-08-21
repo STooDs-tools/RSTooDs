@@ -38,7 +38,7 @@ showWarnings()
 
 # A simple example
 
-River streamflow in Eastern Australia is influenced by the [El Niño Southern Oscillation](https://en.wikipedia.org/wiki/El_Niño-Southern_Oscillation), as explained in this [blog post](https://globxblog.inrae.fr/el-ninoz/). As an illustration, let's consider data from the Barnard River in New South Wales, Australia. The figures below show the average streamflow during the austral spring (September to November), and indeed it seems that negative values of the [nino3.4 index](https://psl.noaa.gov/gcos_wgsp/Timeseries/Nino34/), corresponding to [La Niña episodes](https://en.wikipedia.org/wiki/La_Niña), are associated with large streamflow.
+River streamflow in Eastern Australia is influenced by the [El Niño Southern Oscillation](https://en.wikipedia.org/wiki/El_Niño-Southern_Oscillation), as explained in this [blog post](https://globxblog.github.io/blog/el-ninoz/). As an illustration, let's consider data from the Barnard River in New South Wales, Australia. The figures below show the average streamflow during the austral spring (September to November), and indeed it seems that negative values of the [nino3.4 index](https://psl.noaa.gov/gcos_wgsp/Timeseries/Nino34/), corresponding to [La Niña episodes](https://en.wikipedia.org/wiki/La_Niña), are associated with large streamflow.
 
 ```{r fig.height=8, fig.width=9}
 dat=read.table(file.path('man','readme','BarnardRiverStreamflow.txt'),header=TRUE)

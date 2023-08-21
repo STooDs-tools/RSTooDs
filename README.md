@@ -18,17 +18,10 @@ STooDs case study. Its typical usage is as follows:
 3.  Perform Bayesian-MCMC inference.
 4.  Read, analyse and use MCMC samples.
 
-<!-- end list -->
-
 ``` r
 # devtools::install_github('STooDs-tools/RSTooDs') # First use: install the package from GitHub
 library(RSTooDs)
 ```
-
-    ## Registered S3 methods overwritten by 'tibble':
-    ##   method     from  
-    ##   format.tbl pillar
-    ##   print.tbl  pillar
 
 **Important warning**: many distributions are available in `RSTooDs`,
 but for some of them the parameterization may differ from the one used
@@ -51,11 +44,12 @@ showWarnings()
 River streamflow in Eastern Australia is influenced by the [El Niño
 Southern
 Oscillation](https://en.wikipedia.org/wiki/El_Niño-Southern_Oscillation),
-as explained in this [blog post](https://globxblog.inrae.fr/el-ninoz/).
-As an illustration, let’s consider data from the Barnard River in New
-South Wales, Australia. The figures below show the average streamflow
-during the austral spring (September to November), and indeed it seems
-that negative values of the [nino3.4
+as explained in this [blog
+post](https://globxblog.github.io/blog/el-ninoz/). As an illustration,
+let’s consider data from the Barnard River in New South Wales,
+Australia. The figures below show the average streamflow during the
+austral spring (September to November), and indeed it seems that
+negative values of the [nino3.4
 index](https://psl.noaa.gov/gcos_wgsp/Timeseries/Nino34/), corresponding
 to [La Niña episodes](https://en.wikipedia.org/wiki/La_Niña), are
 associated with large streamflow.
@@ -117,6 +111,14 @@ association between streamflow and the nino index.
 ``` r
 plotMCMC.par(mcmc,mod)
 ```
+
+    ## Warning: The dot-dot notation (`..density..`) was deprecated in ggplot2 3.4.0.
+    ## ℹ Please use `after_stat(density)` instead.
+    ## ℹ The deprecated feature was likely used in the RSTooDs package.
+    ##   Please report the issue to the authors.
+    ## This warning is displayed once every 8 hours.
+    ## Call `lifecycle::last_lifecycle_warnings()` to see where this warning was
+    ## generated.
 
 ![](man/readme/README-unnamed-chunk-7-1.png)<!-- -->
 
