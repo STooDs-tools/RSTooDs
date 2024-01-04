@@ -1,5 +1,5 @@
-RSTooDs
-================
+
+# RSTooDs - An R user interface to STooDs <a href=""><img src="man/readme/logo.png" align="right" height="138" /></a>
 
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.5075760.svg)](https://doi.org/10.5281/zenodo.5075760)
 
