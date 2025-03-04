@@ -105,7 +105,7 @@ checkFormula<-function(f,namespace){
 #' Run an executable file
 #' @param exedir directory of the executable
 #' @param exename name of the executable
-#' @return Nothing
+#' @return an error code (0 for success)
 #' @keywords internal
 runExe<-function(exedir,exename){
   saveWD <- getwd(); # remember current working dir
@@ -115,6 +115,7 @@ runExe<-function(exedir,exename){
              paste0(exename,'.exe'), # Windows command
              paste0('./',exename) # Linux command
              )
-  system2(cmd, stdout = "") # run exe
+  res=system2(cmd, stdout = "") # run exe
   setwd(saveWD) # move back to initial working directory
+  return(res)
 }

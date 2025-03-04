@@ -69,7 +69,9 @@ STooDs <- function(model,
   # Run exe
   quickWrite(txt=addQuotes(paste0(workspace,.Platform$file.sep)),
              dir=dir.exe,fname='Config.txt')
-  if(run){runExe(exedir=dir.exe,exename=name.exe)}
+  res=0
+  if(run){res=try(runExe(exedir=dir.exe,exename=name.exe))}
+  if(res!=0){stop('STooDs executable crashed with error code: ',res,call.=FALSE)}
 }
 
 #*******************************************************************************
